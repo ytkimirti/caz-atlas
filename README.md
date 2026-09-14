@@ -1,4 +1,4 @@
-# cazgraf
+# caz-atlas
 
 Bizim Caz arşivindeki müzisyenleri ve birlikte çaldıkları konserleri keşfetmek için tam ekran, açık temalı bir graf.
 
