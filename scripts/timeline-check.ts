@@ -73,6 +73,38 @@ try {
   await page.reload();
   await expect(start).toHaveValue("2018-01");
   await expect(end).toHaveValue("2022-12");
+  // Browsers without a native month picker expose a text field. Partial edits
+  // must remain editable without publishing invalid dates to graph state/URLs.
+  const fallback = await browser.newPage();
+  await fallback.addInitScript(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "type",
+    )!;
+    Object.defineProperty(HTMLInputElement.prototype, "type", {
+      ...descriptor,
+      set(value: string) {
+        descriptor.set!.call(this, value === "month" ? "text" : value);
+      },
+    });
+  });
+  await fallback.goto(page.url());
+  const fallbackStart = fallback.getByLabel("Başlangıç tarihi", {
+    exact: true,
+  });
+  await expect(fallbackStart).toHaveValue("2018-01");
+  const validUrl = fallback.url();
+  for (const invalid of ["2", "2020-", "2020-00", "2020-13", ""]) {
+    await fallbackStart.fill(invalid);
+    await expect(fallbackStart).toHaveValue(invalid);
+    await expect(fallback).toHaveURL(validUrl);
+  }
+  await fallbackStart.pressSequentially("2019-03");
+  await expect(fallback).toHaveURL(/from=2019-03/);
+  await fallbackStart.fill("2020-99");
+  await fallbackStart.blur();
+  await expect(fallbackStart).toHaveValue("2019-03");
+  await fallback.close();
   await expect(canvas).toHaveAttribute("data-layout", "ready", {
     timeout: 45000,
   });
@@ -154,6 +186,29 @@ try {
   const dateBox = await end.boundingBox();
   expect(dateBox!.x + dateBox!.width).toBeLessThanOrEqual(390);
   const chart = await page.locator(".timeline-chart").boundingBox();
+  const ticks = await page
+    .locator(".timeline-ticks span")
+    .evaluateAll((labels) =>
+      labels.map((el, i) => ({
+        index: i,
+        visible: getComputedStyle(el).display !== "none",
+        left: el.getBoundingClientRect().left,
+        width: el.getBoundingClientRect().width,
+      })),
+    );
+  const firstMonth = monthIndex(concerts.timeline[0].date);
+  const monthSpan = monthIndex(concerts.timeline.at(-1)!.date) - firstMonth;
+  for (const tick of ticks.filter((tick) => tick.visible)) {
+    const anchor =
+      tick.left +
+      (tick.index === 0 ? 0 : tick.index === 7 ? tick.width : tick.width / 2);
+    const month = Math.round(firstMonth + (monthSpan * tick.index) / 7);
+    expect(
+      Math.abs(
+        anchor - (chart!.x + ((month - firstMonth) / monthSpan) * chart!.width),
+      ),
+    ).toBeLessThan(1);
+  }
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchStart",

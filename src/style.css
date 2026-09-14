@@ -1068,11 +1068,21 @@ input[type="checkbox"] {
   transform: rotate(45deg);
 }
 .timeline-ticks {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 11px;
   margin-top: 12px;
   font-size: 9px;
   color: #9ca48e;
+}
+.timeline-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.timeline-ticks span:first-child {
+  transform: none;
+}
+.timeline-ticks span:last-child {
+  transform: translateX(-100%);
 }
 .timeline-tooltip {
   position: absolute;

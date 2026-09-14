@@ -12,7 +12,7 @@ import Network from "./Network";
 import Timeline from "./Timeline";
 import {
   concertHistogram,
-  concertWindow,
+  createConcertWindow,
   monthIndex,
   monthValue,
   readRange,
@@ -282,9 +282,13 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       ),
     [data, concerts, layoutCounts, minConcerts, instrument, venue],
   );
+  const queryConcerts = useMemo(
+    () => createConcertWindow(concerts.timeline, venueId),
+    [concerts, venueId],
+  );
   const windowed = useMemo(
-    () => concertWindow(concerts.timeline, range[0], cursor, venueId),
-    [concerts, range[0], cursor, venueId],
+    () => queryConcerts(range[0], cursor),
+    [queryConcerts, range[0], cursor],
   );
   const histogram = useMemo(
     () => concertHistogram(concerts.timeline, bounds, venueId),

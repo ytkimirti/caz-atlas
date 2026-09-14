@@ -354,29 +354,40 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const focus = s.hovered ?? s.selected;
       const routeNodes = new Set(s.path),
         routeEdges = pathEdges(s.path);
+      function line(e: Edge) {
+        if (!positions.has(e.source) || !positions.has(e.target)) return;
+        const a = point(e.source),
+          b = point(e.target);
+        if (
+          (a.x < 0 && b.x < 0) ||
+          (a.y < 0 && b.y < 0) ||
+          (a.x > width && b.x > width) ||
+          (a.y > height && b.y > height)
+        )
+          return;
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
       function lines(edges: Edge[], color: string, lineWidth: number) {
         ctx.beginPath();
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
-        for (const e of edges) {
-          if (!positions.has(e.source) || !positions.has(e.target)) continue;
-          const a = point(e.source),
-            b = point(e.target);
-          if (
-            (a.x < 0 && b.x < 0) ||
-            (a.y < 0 && b.y < 0) ||
-            (a.x > width && b.x > width) ||
-            (a.y > height && b.y > height)
-          )
-            continue;
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-        }
+        for (const e of edges) line(e);
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.strokeStyle = "#b8b9b080";
+      ctx.lineWidth = 0.7;
+      for (const { edge, alpha } of animatedEdges.values())
+        if (alpha === 1) line(edge);
+      ctx.stroke();
       for (const { edge, alpha } of animatedEdges.values()) {
+        if (alpha === 1 || alpha === 0) continue;
         ctx.globalAlpha = alpha;
-        lines([edge], "#b8b9b080", 0.7);
+        ctx.beginPath();
+        line(edge);
+        ctx.stroke();
       }
       ctx.globalAlpha = 1;
       if (focus !== null) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUpRight, Pause, Play, RotateCcw } from "lucide-react";
-import { monthIndex, monthLabel, monthValue } from "./chronology";
+import { monthLabel, monthValue, parseMonth } from "./chronology";
 import type { DateRange } from "./chronology";
 import { number } from "./types";
 
@@ -15,6 +15,38 @@ interface Props {
   concerts: number;
   onRange: (range: DateRange) => void;
   onCursor: (cursor: number) => void;
+}
+
+function MonthInput({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (month: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => monthValue(value));
+  useEffect(() => setDraft(monthValue(value)), [value]);
+  return (
+    <input
+      type="month"
+      aria-label={label}
+      min={monthValue(min)}
+      max={monthValue(max)}
+      value={draft}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        const month = parseMonth(event.target.value);
+        if (month !== null) onChange(Math.max(min, Math.min(max, month)));
+      }}
+      onBlur={() => setDraft(monthValue(value))}
+    />
+  );
 }
 
 export default function Timeline({
@@ -298,47 +330,29 @@ export default function Timeline({
           </div>
           <div className="timeline-ticks" aria-hidden="true">
             {ticks.map((month, i) => (
-              <span key={i}>{Math.floor(month / 12)}</span>
+              <span key={i} style={{ left: `${percent(month)}%` }}>
+                {Math.floor(month / 12)}
+              </span>
             ))}
           </div>
         </div>
       </div>
       <div className="timeline-bottom">
         <div className="timeline-dates">
-          <input
-            type="month"
-            aria-label="Başlangıç tarihi"
-            min={monthValue(bounds[0])}
-            max={monthValue(range[1])}
-            value={monthValue(range[0])}
-            onChange={(e) => {
-              if (e.target.value)
-                updateRange([
-                  Math.max(
-                    bounds[0],
-                    Math.min(range[1], monthIndex(e.target.value)),
-                  ),
-                  range[1],
-                ]);
-            }}
+          <MonthInput
+            label="Başlangıç tarihi"
+            min={bounds[0]}
+            max={range[1]}
+            value={range[0]}
+            onChange={(month) => updateRange([month, range[1]])}
           />
           <span>→</span>
-          <input
-            type="month"
-            aria-label="Bitiş tarihi"
-            min={monthValue(range[0])}
-            max={monthValue(bounds[1])}
-            value={monthValue(range[1])}
-            onChange={(e) => {
-              if (e.target.value)
-                updateRange([
-                  range[0],
-                  Math.max(
-                    range[0],
-                    Math.min(bounds[1], monthIndex(e.target.value)),
-                  ),
-                ]);
-            }}
+          <MonthInput
+            label="Bitiş tarihi"
+            min={range[0]}
+            max={bounds[1]}
+            value={range[1]}
+            onChange={(month) => updateRange([range[0], month])}
           />
         </div>
         <div className="timeline-presets">
