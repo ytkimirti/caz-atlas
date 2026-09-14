@@ -134,14 +134,14 @@ try {
   expect(await start.inputValue()).not.toBe("2018-02");
   await page.getByRole("button", { name: "Son 10 yıl", exact: true }).click();
   await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
-  await page.getByRole("button", { name: "Ağın büyümesini oynat" }).click();
+  await page.getByRole("button", { name: "Tarihi oynat" }).click();
   await expect(
-    page.getByRole("button", { name: "Oynatmayı duraklat" }),
+    page.getByRole("button", { name: "Tarihi duraklat" }),
   ).toBeVisible();
   await expect
     .poll(async () => Number(await scrubber.inputValue()))
     .toBeGreaterThan(Number(await scrubber.getAttribute("min")));
-  await page.getByRole("button", { name: "Oynatmayı duraklat" }).click();
+  await page.getByRole("button", { name: "Tarihi duraklat" }).click();
   const paused = await scrubber.inputValue();
   await page.screenshot({ path: ".cache/timeline-playing.png" });
   await expect(scrubber).toHaveValue(paused);
@@ -152,16 +152,17 @@ try {
   await start.fill("1956-04");
   await end.fill("1956-04");
   await expect(
-    page.getByRole("button", { name: "Ağın büyümesini oynat" }),
+    page.getByRole("button", { name: "Tarihi oynat" }),
   ).toBeDisabled();
   await expect(page.locator(".empty-state")).toBeVisible();
   await end.fill("1956-05");
-  await page.getByRole("button", { name: "Ağın büyümesini oynat" }).click();
+  await page.getByRole("button", { name: "Tarihi oynat" }).click();
   await expect(scrubber).toHaveValue(String(monthIndex("1956-05")));
   await expect(
-    page.getByRole("button", { name: "Ağın büyümesini oynat" }),
+    page.getByRole("button", { name: "Tarihi oynat" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Tüm tarihleri göster" }).click();
+  await page.getByRole("button", { name: "Keşfet modu", exact: true }).click();
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
   await page.getByLabel("Mekan", { exact: true }).fill("nardis");
   await page.getByRole("button", { name: /Nardis Jazz Club/ }).click();

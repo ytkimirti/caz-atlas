@@ -200,12 +200,12 @@ export default function Timeline({
           </button>
         </div>
         <span
-          className={`experience-description ${playing ? "timeline-live" : ""}`}
+          className={`experience-description ${livePhysics ? "timeline-live" : ""}`}
         >
           {livePhysics
             ? playing
-              ? "Canlı fizik · Oynatılıyor"
-              : "Canlı fizik · Oynatmaya hazır"
+              ? "Fizik canlı · Tarih ilerliyor"
+              : "Fizik canlı · Tarih sabit"
             : "Sabit yerleşim · Bir dönem seç, bağlantıları keşfet"}
         </span>
       </div>
@@ -214,8 +214,11 @@ export default function Timeline({
           {livePhysics ? (
             <button
               className="timeline-play"
-              aria-label={
-                playing ? "Oynatmayı duraklat" : "Ağın büyümesini oynat"
+              aria-label={playing ? "Tarihi duraklat" : "Tarihi oynat"}
+              title={
+                playing
+                  ? "Tarih akışını duraklat; fizik çalışmaya devam eder"
+                  : "Tarihi ilerlet; fizik her zaman çalışır"
               }
               aria-pressed={playing}
               disabled={range[0] === range[1]}

@@ -33,6 +33,7 @@ const page = await browser.newPage({ viewport: { width: 1512, height: 982 } });
 const errors: string[] = [];
 page.on("pageerror", (e) => errors.push(e.message));
 await page.addInitScript(() => {
+  const NativeWorker = window.Worker;
   const params = new URLSearchParams(location.search);
   const harness = (window.layoutHarness = {
     workers: [] as ControlledWorker[],
@@ -45,8 +46,10 @@ await page.addInitScript(() => {
     onmessageerror: (() => void) | null = null;
     request: Request | null = null;
     terminated = false;
-    constructor() {
+    constructor(url: string | URL, options?: WorkerOptions) {
       super();
+      if (String(url).includes("live-physics.worker"))
+        return new NativeWorker(url, options) as unknown as this;
       if (harness.failConstruction)
         throw new DOMException("Worker blocked", "SecurityError");
       harness.workers.push(this);
@@ -247,24 +250,24 @@ try {
   await expect(progress).toBeVisible();
   await complete();
   await ready();
-  // Playback lets each period finish instead of continuously cancelling physics.
-  await page.getByRole("button", { name: "Ağın büyümesini oynat" }).click();
-  await expect(progress).toBeVisible();
+  // Live physics reuses the ready layout without starting new layout jobs.
+  await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
+  await expect(canvas).toHaveAttribute("data-physics", "running");
+  await page.getByRole("button", { name: "Tarihi oynat" }).click();
+  await expect(progress).toHaveCount(0);
   const cursor = page.getByLabel("Gösterilen tarih", { exact: true });
   const heldDate = await cursor.inputValue();
   const heldJobs = await page.evaluate(
     () => window.layoutHarness.workers.length,
   );
-  await page.waitForTimeout(700);
-  await expect(cursor).toHaveValue(heldDate);
-  expect(await page.evaluate(() => window.layoutHarness.workers.length)).toBe(
-    heldJobs,
-  );
-  await complete();
   await expect
     .poll(async () => Number(await cursor.inputValue()))
     .toBeGreaterThan(Number(heldDate));
-  await page.getByRole("button", { name: "Oynatmayı duraklat" }).click();
+  expect(await page.evaluate(() => window.layoutHarness.workers.length)).toBe(
+    heldJobs,
+  );
+  await page.getByRole("button", { name: "Tarihi duraklat" }).click();
+  await expect(canvas).toHaveAttribute("data-physics", "running");
   await page.goto(`${base}?min=999999&worker-error=1`);
   await expect(page.locator(".empty-state")).toBeVisible();
   await expect(canvas).toHaveAttribute("data-layout", "ready");

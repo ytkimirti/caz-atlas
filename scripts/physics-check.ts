@@ -36,7 +36,7 @@ try {
     });
     await expect(canvas).toHaveAttribute("data-physics", "off");
     await expect(
-      page.getByRole("button", { name: "Ağın büyümesini oynat", exact: true }),
+      page.getByRole("button", { name: "Tarihi oynat", exact: true }),
     ).toHaveCount(0);
     const originalDate = await cursor.inputValue();
     await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
@@ -44,7 +44,14 @@ try {
       "data-experience",
       "live",
     );
-    await expect(canvas).toHaveAttribute("data-physics", "paused");
+    await expect(canvas).toHaveAttribute("data-physics", "running");
+    await expect(cursor).toHaveValue(originalDate);
+    const initialTicks = Number(
+      await canvas.getAttribute("data-physics-ticks"),
+    );
+    await expect
+      .poll(async () => Number(await canvas.getAttribute("data-physics-ticks")))
+      .toBeGreaterThan(initialTicks + 2);
     await expect(cursor).toHaveValue(originalDate);
     // Slow the date clock so movement can be verified within a single date.
     const speed = page.getByRole("button", {
@@ -54,7 +61,7 @@ try {
     for (let i = 0; i < 3; i++) await speed.click();
     await expect(speed).toHaveText("0.5×");
     await page
-      .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
+      .getByRole("button", { name: "Tarihi oynat", exact: true })
       .click();
     await expect(canvas).toHaveAttribute("data-physics", "running");
     const sample = await canvas.getAttribute("data-physics-sample");
@@ -73,18 +80,23 @@ try {
       workers!,
     );
     await page
-      .getByRole("button", { name: "Oynatmayı duraklat", exact: true })
+      .getByRole("button", { name: "Tarihi duraklat", exact: true })
       .click();
-    await expect(canvas).toHaveAttribute("data-physics", "paused");
+    await expect(canvas).toHaveAttribute("data-physics", "running");
     const pausedSample = await canvas.getAttribute("data-physics-sample");
     const pausedTicks = await canvas.getAttribute("data-physics-ticks");
     const pausedDate = await cursor.inputValue();
     await page.waitForTimeout(750);
-    await expect(canvas).toHaveAttribute("data-physics-sample", pausedSample!);
-    await expect(canvas).toHaveAttribute("data-physics-ticks", pausedTicks!);
+    await expect(canvas).not.toHaveAttribute(
+      "data-physics-sample",
+      pausedSample!,
+    );
+    expect(
+      Number(await canvas.getAttribute("data-physics-ticks")),
+    ).toBeGreaterThan(Number(pausedTicks));
     await expect(cursor).toHaveValue(pausedDate);
     await page
-      .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
+      .getByRole("button", { name: "Tarihi oynat", exact: true })
       .click();
     await expect(canvas).not.toHaveAttribute(
       "data-physics-sample",
@@ -129,8 +141,22 @@ try {
       document.dispatchEvent(new Event("visibilitychange"));
     });
     await expect(canvas).toHaveAttribute("data-physics", "paused");
+    const hiddenTicks = await canvas.getAttribute("data-physics-ticks");
+    await page.waitForTimeout(150);
+    await expect(canvas).toHaveAttribute("data-physics-ticks", hiddenTicks!);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: false,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(canvas).toHaveAttribute("data-physics", "running");
+    await expect
+      .poll(async () => Number(await canvas.getAttribute("data-physics-ticks")))
+      .toBeGreaterThan(Number(hiddenTicks));
     await expect(
-      page.getByRole("button", { name: "Ağın büyümesini oynat", exact: true }),
+      page.getByRole("button", { name: "Tarihi oynat", exact: true }),
     ).toBeVisible();
     const stopDate = await cursor.inputValue();
     await page
@@ -140,7 +166,7 @@ try {
     await expect(cursor).toHaveValue(stopDate);
     expect(new URL(page.url()).searchParams.has("experience")).toBe(false);
     console.log(
-      `${mode}: moving bodies within one date, continuous ticks across dates, pause/resume and hidden-tab pause passed`,
+      `${mode}: moving bodies within one date, continuous ticks across dates, continuous physics before playback, during date pause, and after tab restore passed`,
     );
   }
   await page.goto(base);
@@ -148,9 +174,7 @@ try {
     timeout: 45000,
   });
   await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Tarihi oynat", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute(
     "data-physics",
     "running",
@@ -167,16 +191,19 @@ try {
     timeout: 45000,
   });
   await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Tarihi oynat", exact: true }).click();
   await expect(canvas).toHaveAttribute("data-physics", "running");
-  await expect(canvas).toHaveAttribute("data-physics", "paused", {
-    timeout: 20000,
-  });
   await expect(
     page.getByLabel("Gösterilen tarih", { exact: true }),
-  ).toHaveValue(String(2020 * 12 + 3));
+  ).toHaveValue(String(2020 * 12 + 3), { timeout: 20000 });
+  await expect(
+    page.getByRole("button", { name: "Tarihi oynat", exact: true }),
+  ).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-physics", "running");
+  const endTicks = Number(await canvas.getAttribute("data-physics-ticks"));
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-physics-ticks")))
+    .toBeGreaterThan(endTicks + 2);
   await page.screenshot({ path: ".cache/physics-mobile.png" });
   expect(
     await page.evaluate(
@@ -187,13 +214,13 @@ try {
   await expect(
     page.getByRole("button", { name: "Canlı modu", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(canvas).toHaveAttribute("data-physics", "paused");
+  await expect(canvas).toHaveAttribute("data-physics", "running");
   await page.getByLabel("Bitiş tarihi", { exact: true }).fill("2020-05");
   await expect(page.locator(".timeline")).toHaveAttribute(
     "data-experience",
     "live",
   );
-  await expect(canvas).toHaveAttribute("data-physics", "paused");
+  await expect(canvas).toHaveAttribute("data-physics", "running");
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await expect(page.locator("#layout-engine")).toHaveCount(0);
   await page
@@ -214,15 +241,13 @@ try {
   await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
   await expect(canvas).toHaveAttribute("data-layout", "fallback");
   await expect(
-    page.getByRole("button", { name: "Ağın büyümesini oynat", exact: true }),
+    page.getByRole("button", { name: "Tarihi oynat", exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Tekrar hesapla", exact: true })
     .click();
   await expect(canvas).toHaveAttribute("data-layout", "ready");
-  await page
-    .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Tarihi oynat", exact: true }).click();
   await expect(canvas).toHaveAttribute("data-physics", "running");
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-physics-ticks")))
@@ -238,7 +263,7 @@ try {
   ).toHaveValue(stoppedDate);
   expect(errors).toEqual([]);
   console.log(
-    "Mobile replay, end-of-range pause, reduced motion, worker failure recovery and runtime errors passed",
+    "Mobile replay, continuous end-of-range physics, reduced motion, worker failure recovery and runtime errors passed",
   );
 } finally {
   await browser.close();

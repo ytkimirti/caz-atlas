@@ -41,7 +41,6 @@ interface Props {
   mode: ViewMode;
   spacing: number;
   resolution: number;
-  playing: boolean;
   livePhysics: boolean;
   onLayoutStatus: (status: LayoutStatus) => void;
   onSelect: (id: number | null) => void;
@@ -114,7 +113,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       props.counts,
       props.ensembles,
       props.showEnsembles,
-      props.playing,
     ],
   );
 
@@ -825,7 +823,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           (added) => {
             if (disposed) return;
             positionedData = physicsData;
-            if (!motion.matches && state.current.playing)
+            if (!motion.matches && !document.hidden)
               for (const id of added) births.set(id, performance.now());
             scene = sceneBounds(positions.values());
             updateProjection();
@@ -851,7 +849,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function draw(now: number) {
       frame = 0;
       const s = state.current;
-      const running = !!physics && s.playing && !document.hidden;
+      const running = !!physics && !document.hidden;
       if (!running && physicsRunning) {
         physics?.pause();
         camera = null;
@@ -1397,11 +1395,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ? `${point(s.selected).x},${point(s.selected).y}`
           : "";
     }
+    document.addEventListener("visibilitychange", invalidateFrame);
     invalidateFrame();
     return () => {
       disposed = true;
       previousPositions.current = new Map(positions);
       physics?.dispose();
+      document.removeEventListener("visibilitychange", invalidateFrame);
       cancelAnimationFrame(frame);
       observer.disconnect();
       panels.disconnect();

@@ -745,7 +745,6 @@ function AtlasApp({
         data={graph}
         layoutData={livePhysics ? historyGraph : graph}
         layoutCounts={livePhysics ? historyCounts : counts}
-        playing={playing}
         livePhysics={livePhysics}
         edges={edges}
         counts={counts}
@@ -895,9 +894,7 @@ function AtlasApp({
             </button>
           </div>
           {livePhysics ? (
-            <p className="spatial-title">
-              Canlı fizik · Oynatma ile hareket eder
-            </p>
+            <p className="spatial-title">Canlı fizik · Sürekli çalışır</p>
           ) : mode === "2d" ? (
             <>
               <label htmlFor="layout-engine">Yerleşim</label>
