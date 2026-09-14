@@ -89,7 +89,7 @@ input[type="checkbox"] {
   accent-color: var(--accent);
 }
 .atlas {
-  --timeline-height: 164px;
+  --timeline-height: 188px;
   --header-height: 132px;
   position: relative;
   width: 100%;
@@ -1148,9 +1148,43 @@ input[type="checkbox"] {
   justify-content: space-between;
   margin-bottom: 16px;
 }
-.timeline-heading > span + span {
+.timeline-heading .experience-description {
   font-size: 10px;
   color: #8c9685;
+}
+.experience-switch {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: #f1f4ee;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.experience-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  border-radius: 6px;
+}
+.experience-switch button[aria-pressed="true"] {
+  background: white;
+  color: var(--accent);
+  box-shadow: 0 1px 4px #233c2f12;
+}
+.timeline-static-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .timeline-main,
 .timeline-transport,
@@ -1498,7 +1532,7 @@ input[type="checkbox"] {
 }
 @media (max-width: 700px) {
   .atlas {
-    --timeline-height: calc(194px + env(safe-area-inset-bottom));
+    --timeline-height: calc(218px + env(safe-area-inset-bottom));
     --header-height: 206px;
   }
   .app-header {
@@ -1751,7 +1785,7 @@ input[type="checkbox"] {
   .timeline-heading .section-caption {
     font-size: 9px;
   }
-  .timeline-heading > span + span {
+  .timeline-heading .experience-description {
     display: none;
   }
   .timeline-main {
@@ -1763,7 +1797,8 @@ input[type="checkbox"] {
     position: relative;
     padding-bottom: 16px;
   }
-  .timeline-play {
+  .timeline-play,
+  .timeline-static-icon {
     width: 34px;
     height: 34px;
   }

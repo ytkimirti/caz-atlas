@@ -34,6 +34,18 @@ try {
     await expect(canvas).toHaveAttribute("data-layout", "ready", {
       timeout: 45000,
     });
+    await expect(canvas).toHaveAttribute("data-physics", "off");
+    await expect(
+      page.getByRole("button", { name: "Ağın büyümesini oynat", exact: true }),
+    ).toHaveCount(0);
+    const originalDate = await cursor.inputValue();
+    await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
+    await expect(page.locator(".timeline")).toHaveAttribute(
+      "data-experience",
+      "live",
+    );
+    await expect(canvas).toHaveAttribute("data-physics", "paused");
+    await expect(cursor).toHaveValue(originalDate);
     // Slow the date clock so movement can be verified within a single date.
     const speed = page.getByRole("button", {
       name: "Oynatma hızı",
@@ -120,6 +132,13 @@ try {
     await expect(
       page.getByRole("button", { name: "Ağın büyümesini oynat", exact: true }),
     ).toBeVisible();
+    const stopDate = await cursor.inputValue();
+    await page
+      .getByRole("button", { name: "Keşfet modu", exact: true })
+      .click();
+    await expect(canvas).toHaveAttribute("data-physics", "off");
+    await expect(cursor).toHaveValue(stopDate);
+    expect(new URL(page.url()).searchParams.has("experience")).toBe(false);
     console.log(
       `${mode}: moving bodies within one date, continuous ticks across dates, pause/resume and hidden-tab pause passed`,
     );
@@ -128,6 +147,7 @@ try {
   await expect(page.locator("canvas")).toHaveAttribute("data-layout", "ready", {
     timeout: 45000,
   });
+  await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
   await page
     .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
     .click();
@@ -146,6 +166,7 @@ try {
   await expect(canvas).toHaveAttribute("data-layout", "ready", {
     timeout: 45000,
   });
+  await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
   await page
     .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
     .click();
@@ -162,14 +183,35 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Canlı modu", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(canvas).toHaveAttribute("data-physics", "paused");
+  await page.getByLabel("Bitiş tarihi", { exact: true }).fill("2020-05");
+  await expect(page.locator(".timeline")).toHaveAttribute(
+    "data-experience",
+    "live",
+  );
+  await expect(canvas).toHaveAttribute("data-physics", "paused");
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
+  await expect(page.locator("#layout-engine")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Görünümü kapat", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Keşfet modu", exact: true }).click();
+  await expect(canvas).toHaveAttribute("data-physics", "off");
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
+  await expect(page.locator("#layout-engine")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Görünümü kapat", exact: true })
+    .click();
   await page.goto(`${base}/?from=2020-01&to=2026-01&at=2023-01`);
   await expect(canvas).toHaveAttribute("data-layout", "ready", {
     timeout: 45000,
   });
   await page.evaluate(() => sessionStorage.setItem("fail-physics", "once"));
-  await page
-    .getByRole("button", { name: "Ağın büyümesini oynat", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
   await expect(canvas).toHaveAttribute("data-layout", "fallback");
   await expect(
     page.getByRole("button", { name: "Ağın büyümesini oynat", exact: true }),
@@ -185,6 +227,15 @@ try {
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-physics-ticks")))
     .toBeGreaterThan(2);
+  await page.getByRole("button", { name: "Keşfet modu", exact: true }).click();
+  await expect(canvas).toHaveAttribute("data-physics", "off");
+  const stoppedDate = await page
+    .getByLabel("Gösterilen tarih", { exact: true })
+    .inputValue();
+  await page.waitForTimeout(900);
+  await expect(
+    page.getByLabel("Gösterilen tarih", { exact: true }),
+  ).toHaveValue(stoppedDate);
   expect(errors).toEqual([]);
   console.log(
     "Mobile replay, end-of-range pause, reduced motion, worker failure recovery and runtime errors passed",

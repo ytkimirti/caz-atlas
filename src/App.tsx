@@ -366,14 +366,19 @@ function AtlasApp({
       )[1],
   );
   const [playing, setPlaying] = useState(false);
-  const [livePhysics, setLivePhysics] = useState(false);
+  const [livePhysics, setLivePhysics] = useState(
+    () => params.get("experience") === "live",
+  );
   const changePlaying = useCallback((next: boolean) => {
-    if (next) setLivePhysics(true);
     setPlaying(next);
   }, []);
+  function changeExperience(live: boolean) {
+    if (live === livePhysics) return;
+    setPlaying(false);
+    setLivePhysics(live);
+  }
   function changeRange(next: DateRange) {
     setPlaying(false);
-    setLivePhysics(false);
     setRange(next);
     setCursor(next[1]);
   }
@@ -454,7 +459,6 @@ function AtlasApp({
   );
   useEffect(() => {
     setPlaying(false);
-    setLivePhysics(false);
   }, [historyGraph, engine, mode, spacing, resolution]);
   const queryConcerts = useMemo(
     () => createConcertWindow(concerts.timeline, venueId),
@@ -632,6 +636,7 @@ function AtlasApp({
         topCollaborators === null ? "all" : String(topCollaborators),
       );
     if (mode === "3d") query.set("view", mode);
+    if (livePhysics) query.set("experience", "live");
     if (engine !== DEFAULT_ENGINE) query.set("engine", engine);
     if (resolution !== 1.5) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
@@ -654,6 +659,7 @@ function AtlasApp({
     bounds,
     cursor,
     mode,
+    livePhysics,
     engine,
     spacing,
     resolution,
@@ -888,7 +894,11 @@ function AtlasApp({
               <X size={18} />
             </button>
           </div>
-          {mode === "2d" ? (
+          {livePhysics ? (
+            <p className="spatial-title">
+              Canlı fizik · Oynatma ile hareket eder
+            </p>
+          ) : mode === "2d" ? (
             <>
               <label htmlFor="layout-engine">Yerleşim</label>
               <select
@@ -913,7 +923,7 @@ function AtlasApp({
           ) : (
             <p className="spatial-title">Üç boyutlu ağ</p>
           )}
-          {mode === "2d" && engine === "communities" && (
+          {!livePhysics && mode === "2d" && engine === "communities" && (
             <div className="layout-spacing">
               <label htmlFor="community-detail">Gruplama</label>
               <select
@@ -1605,6 +1615,8 @@ function AtlasApp({
         edges={edges.length}
         concerts={windowed.concerts}
         playing={playing}
+        livePhysics={livePhysics}
+        onExperienceChange={changeExperience}
         onPlayingChange={changePlaying}
         calculating={layoutStatus === "pending"}
         onRange={changeRange}

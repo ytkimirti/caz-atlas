@@ -133,6 +133,7 @@ try {
   await page.mouse.up();
   expect(await start.inputValue()).not.toBe("2018-02");
   await page.getByRole("button", { name: "Son 10 yıl", exact: true }).click();
+  await page.getByRole("button", { name: "Canlı modu", exact: true }).click();
   await page.getByRole("button", { name: "Ağın büyümesini oynat" }).click();
   await expect(
     page.getByRole("button", { name: "Oynatmayı duraklat" }),

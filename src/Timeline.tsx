@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUpRight, Pause, Play, RotateCcw } from "lucide-react";
+import {
+  ArrowUpRight,
+  Compass,
+  Pause,
+  Play,
+  RotateCcw,
+  Waves,
+} from "lucide-react";
 import { monthLabel, monthValue, parseMonth } from "./chronology";
 import type { DateRange } from "./chronology";
 import { number } from "./types";
@@ -19,6 +26,8 @@ interface Props {
   concerts: number;
   calculating: boolean;
   playing: boolean;
+  livePhysics: boolean;
+  onExperienceChange: (live: boolean) => void;
   onPlayingChange: (playing: boolean) => void;
   onRange: (range: DateRange) => void;
   onCursor: (cursor: number) => void;
@@ -68,6 +77,8 @@ export default function Timeline({
   concerts,
   calculating,
   playing,
+  livePhysics,
+  onExperienceChange,
   onPlayingChange: setPlaying,
   onRange,
   onCursor,
@@ -85,7 +96,7 @@ export default function Timeline({
   const max = Math.max(1, ...histogram);
   const step = playbackStep(cursor, range[1], arrivals, speed);
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !livePhysics) return;
     if (cursor >= range[1]) {
       setPlaying(false);
       return;
@@ -95,6 +106,7 @@ export default function Timeline({
     return () => window.clearTimeout(timer);
   }, [
     playing,
+    livePhysics,
     cursor,
     range,
     step.cursor,
@@ -165,53 +177,79 @@ export default function Timeline({
     <section
       className={`timeline ${playing ? "is-playing" : ""}`}
       aria-label="Zaman çizelgesi"
+      data-experience={livePhysics ? "live" : "explore"}
       style={{ "--play-duration": `${step.delay}ms` } as CSSProperties}
     >
       <div className="timeline-heading">
-        <span className="section-caption">ZAMAN İÇİNDE KEŞFET</span>
-        <span className={playing ? "timeline-live" : undefined}>
-          {playing ? (
-            <>
-              <i aria-hidden="true" /> CANLI · Bağlantılar hayat buluyor
-            </>
-          ) : (
-            "Bir dönem seç veya ağın büyümesini oynat."
-          )}
+        <div className="experience-switch" role="group" aria-label="Keşif modu">
+          <button
+            type="button"
+            aria-label="Keşfet modu"
+            aria-pressed={!livePhysics}
+            onClick={() => onExperienceChange(false)}
+          >
+            <Compass size={13} aria-hidden="true" /> Keşfet
+          </button>
+          <button
+            type="button"
+            aria-label="Canlı modu"
+            aria-pressed={livePhysics}
+            onClick={() => onExperienceChange(true)}
+          >
+            <Waves size={13} aria-hidden="true" /> Canlı
+          </button>
+        </div>
+        <span
+          className={`experience-description ${playing ? "timeline-live" : ""}`}
+        >
+          {livePhysics
+            ? playing
+              ? "Canlı fizik · Oynatılıyor"
+              : "Canlı fizik · Oynatmaya hazır"
+            : "Sabit yerleşim · Bir dönem seç, bağlantıları keşfet"}
         </span>
       </div>
       <div className="timeline-main">
         <div className="timeline-transport">
-          <button
-            className="timeline-play"
-            aria-label={
-              playing ? "Oynatmayı duraklat" : "Ağın büyümesini oynat"
-            }
-            aria-pressed={playing}
-            disabled={range[0] === range[1]}
-            onClick={() => {
-              if (!playing && cursor >= range[1])
-                onCursor(Math.min(replayFrom, range[1] - 1));
-              setPlaying(!playing);
-            }}
-          >
-            {playing ? (
-              <Pause size={19} fill="currentColor" />
-            ) : (
-              <Play size={19} fill="currentColor" />
-            )}
-          </button>
+          {livePhysics ? (
+            <button
+              className="timeline-play"
+              aria-label={
+                playing ? "Oynatmayı duraklat" : "Ağın büyümesini oynat"
+              }
+              aria-pressed={playing}
+              disabled={range[0] === range[1]}
+              onClick={() => {
+                if (!playing && cursor >= range[1])
+                  onCursor(Math.min(replayFrom, range[1] - 1));
+                setPlaying(!playing);
+              }}
+            >
+              {playing ? (
+                <Pause size={19} fill="currentColor" />
+              ) : (
+                <Play size={19} fill="currentColor" />
+              )}
+            </button>
+          ) : (
+            <span className="timeline-static-icon" aria-hidden="true">
+              <Compass size={20} />
+            </span>
+          )}
           <div className="timeline-now">
             <strong>{Math.floor(cursor / 12)}</strong>
             <span>{monthLabel(cursor).split(" ")[0]}</span>
           </div>
-          <button
-            className="timeline-speed"
-            aria-label="Oynatma hızı"
-            title="Müzisyen yoğunluğuna göre ayarlanan oynatma hızını değiştir"
-            onClick={() => setSpeed(speed === 4 ? 0.5 : speed * 2)}
-          >
-            {speed}×
-          </button>
+          {livePhysics && (
+            <button
+              className="timeline-speed"
+              aria-label="Oynatma hızı"
+              title="Müzisyen yoğunluğuna göre ayarlanan oynatma hızını değiştir"
+              onClick={() => setSpeed(speed === 4 ? 0.5 : speed * 2)}
+            >
+              {speed}×
+            </button>
+          )}
         </div>
         <div className="timeline-chart-wrap">
           <div
