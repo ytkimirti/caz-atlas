@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.cache/
+.claude/
+.pw
+.env*
+*.tsbuildinfo
+test-results/
+playwright-report/

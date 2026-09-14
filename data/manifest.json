@@ -1,0 +1,19 @@
+{
+  "source": "https://bizimcaz.com",
+  "format": "gzip-compressed newline-delimited JSON",
+  "file": "source-networks.ndjson.gz",
+  "sha256": "9fbe3ad5eadd67b67c77ea1a036cc99b2e89a98eca92ecd717346e9ec7977ad4",
+  "totalMusicians": 14714,
+  "availableNetworks": 13474,
+  "unavailableNetworksWithProfile": 1240,
+  "failedRequests": 0,
+  "downloadStartedAt": "2026-09-13T10:34:30.361Z",
+  "downloadFinishedAt": "2026-09-14T08:27:05.605Z",
+  "networkParameters": {
+    "years_back": 150,
+    "min_weight": 0,
+    "max_musicians": 20000
+  },
+  "cachedPeriod": "all_time",
+  "notes": "Every sitemap musician was requested. HTTP 404 network responses are represented by unavailable=true plus the public musician-info profile. Absence of a cached relationship is not proof that a collaboration never occurred. Edge weights are source-defined scores, not concert counts."
+}
