@@ -33,6 +33,7 @@ def parse_concerts(body):
         records.append({"key": key, "date": date,
                         "venue": key.rsplit("_", 2)[0],
                         "venueName": plain(cells[2]), "city": plain(cells[3]),
+                        "title": plain(cells[5]),
                         "musicians": sorted(set(names))})
     return records
 
@@ -40,8 +41,9 @@ def parse_concerts(body):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fetch", action="store_true", help="Fetch public pages and write the local concert snapshot")
+    parser.add_argument("--from-cache", action="store_true", help="Rebuild from cached pages only, preserving the snapshot date")
     args = parser.parse_args()
-    if not args.fetch:
+    if not args.fetch and not args.from_cache:
         parser.print_help()
         return
     cache = ROOT / ".cache/concerts"
@@ -51,6 +53,8 @@ def main():
         target = cache / (route.strip("/").replace("/", "-") + ".html")
         if target.exists():
             return target.read_text()
+        if args.from_cache:
+            raise RuntimeError("Missing cached page: " + route)
         for attempt in range(4):
             result = subprocess.run(["curl", "-sSfL", "--max-time", "45", "-A", "CazAtlas/1.0 (public concert archive)",
                                      "https://bizimcaz.com" + route], capture_output=True, text=True)
@@ -87,7 +91,9 @@ def main():
         raise RuntimeError(f"{len(failures)} pages failed; rerun to resume. Snapshot not replaced.")
     if len(records) != sum(int(count) for _, count in years):
         raise RuntimeError("Archive count changed during collection. Snapshot not replaced.")
-    snapshot = {"source": "https://bizimcaz.com/concerts", "fetchedAt": datetime.now(timezone.utc).isoformat(),
+    fetched_at = (json.loads(gzip.decompress((ROOT / "data/concerts.json.gz").read_bytes()))["fetchedAt"]
+                  if args.from_cache else datetime.now(timezone.utc).isoformat())
+    snapshot = {"source": "https://bizimcaz.com/concerts", "fetchedAt": fetched_at,
                 "pages": len(routes), "complete": True, "concerts": sorted(records.values(), key=lambda c: c["key"])}
     target = ROOT / "data/concerts.json.gz"
     temporary = target.with_suffix(".tmp")

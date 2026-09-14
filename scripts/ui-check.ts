@@ -59,6 +59,44 @@ try {
   const visibleEdges = Number(await canvas.getAttribute("data-visible-edges"));
   expect(visibleEdges).toBeGreaterThan(0);
   expect(visibleEdges).toBeLessThan(defaultGraph.edges.length / 10);
+
+  // Zoom buttons accumulate rapid clicks, ease briefly, then stop rendering.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const motion = await page.evaluate(async () => {
+    const graph = document.querySelector<HTMLCanvasElement>("canvas")!;
+    const button = document.querySelector<HTMLButtonElement>(
+      '[aria-label="Yakınlaştır"]',
+    )!;
+    const before = Number(graph.dataset.zoom);
+    button.click();
+    button.click();
+    const samples: number[] = [];
+    const start = performance.now();
+    await new Promise<void>((resolve) => {
+      const sample = () => {
+        samples.push(Number(graph.dataset.zoom));
+        if (performance.now() - start < 350) requestAnimationFrame(sample);
+        else resolve();
+      };
+      requestAnimationFrame(sample);
+    });
+    return { before, samples, animating: graph.dataset.animating };
+  });
+  expect(new Set(motion.samples).size).toBeGreaterThan(2);
+  expect(motion.samples.at(-1)!).toBeCloseTo(motion.before * 1.3 ** 2, 5);
+  expect(motion.animating).toBe("false");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await expect(canvas).toHaveAttribute("data-animating", "false");
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-zoom")))
+    .toBeCloseTo(motion.before, 5);
+  await search.fill("asude");
+  await page.getByRole("button", { name: "Aramayı temizle" }).click();
+  await expect(search).toHaveValue("");
+  await expect(search).toBeFocused();
+  await search.press("Escape");
+  await search.blur();
   await page.screenshot({ path: ".cache/minimal-desktop.png" });
 
   // Switching layouts runs a fresh worker and persists a valid selection.
@@ -189,7 +227,18 @@ try {
   await expect(page.locator(".selection-panel")).not.toBeVisible();
   await expect(page.locator(".filter-panel")).toBeVisible();
   const bounds = await page.locator(".filter-panel").boundingBox();
-  expect(bounds!.y + bounds!.height).toBeLessThan(844);
+  const zoomBounds = await page.locator(".zoom-controls").boundingBox();
+  expect(bounds!.y + bounds!.height).toBeLessThan(zoomBounds!.y);
+  expect(
+    await page
+      .locator(".filter-panel")
+      .evaluate((panel) => getComputedStyle(panel).backgroundColor),
+  ).toBe("rgb(255, 255, 255)");
+  expect(
+    await page
+      .locator(".filter-panel")
+      .evaluate((panel) => panel.getAnimations().length),
+  ).toBe(0);
   await page.screenshot({ path: ".cache/minimal-mobile-filters.png" });
   await page.keyboard.press("Escape");
   await expect(page.locator(".filter-panel")).toHaveCount(0);
@@ -225,6 +274,12 @@ try {
   await expect(page.locator(".selection-panel")).toHaveCount(0);
   await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
 
+  await page.setViewportSize({ width: 320, height: 568 });
+  const footer = await page.locator(".graph-footer").boundingBox();
+  const narrowZoom = await page.locator(".zoom-controls").boundingBox();
+  expect(footer!.x + footer!.width).toBeLessThan(narrowZoom!.x);
+  await page.screenshot({ path: ".cache/polish-narrow.png" });
+
   await page.setViewportSize({ width: 1512, height: 982 });
   await page
     .getByRole("button", { name: "Konser sayısı filtresini kaldır" })
@@ -234,6 +289,11 @@ try {
     "aria-label",
     new RegExp(`^${data.nodes.length} müzisyenin`),
   );
+  // The full archive skips canvas animation to keep dense views responsive.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
+  await expect(canvas).toHaveAttribute("data-animating", "false");
+  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
   await page.screenshot({ path: ".cache/minimal-all.png" });
 
   // Recover from a failed dataset request without a page reload.

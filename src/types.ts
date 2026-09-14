@@ -37,6 +37,12 @@ export interface Atlas {
     complete: boolean;
   };
 }
+export interface Ensemble {
+  id: string;
+  name: string;
+  concerts: number;
+  musicians: Record<string, number>;
+}
 export interface Venue {
   id: string;
   name: string;
@@ -44,8 +50,10 @@ export interface Venue {
   concerts: number;
   musicians: Record<string, number>;
   edges: Edge[];
+  ensembles: Ensemble[];
 }
 export interface ConcertIndex {
+  ensembles: Ensemble[];
   counts: Record<string, number>;
   edges: Edge[];
   venues: Venue[];

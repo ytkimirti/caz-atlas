@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { LayoutEngine, LayoutStatus } from "./layout-options";
 import type { LayoutResponse } from "./layout";
-import type { Atlas, Edge } from "./types";
+import type { Atlas, Edge, Ensemble } from "./types";
 import { groupInfo } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
 
@@ -14,6 +14,8 @@ interface Props {
   data: Pick<Atlas, "nodes" | "edges">;
   edges: Edge[];
   counts: Record<string, number>;
+  ensembles: Ensemble[];
+  showEnsembles: boolean;
   selected: number | null;
   hovered: number | null;
   path: number[];
@@ -43,7 +45,15 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   );
   useEffect(
     () => invalidate.current(),
-    [props.selected, props.hovered, props.path, props.labels, props.edges],
+    [
+      props.selected,
+      props.hovered,
+      props.path,
+      props.labels,
+      props.edges,
+      props.ensembles,
+      props.showEnsembles,
+    ],
   );
 
   useEffect(() => {
@@ -56,6 +66,14 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         previousPositions.current.get(n.id) ?? { x: n.x, y: n.y },
       ]),
     );
+    const ensembleMembers = props.ensembles
+      .map((ensemble) => ({
+        ensemble,
+        members: Object.keys(ensemble.musicians)
+          .map(Number)
+          .filter((id) => positions.has(id)),
+      }))
+      .filter((item) => item.members.length);
     const neighbors = adjacency(props.data);
     const edgesByKey = new Map(
       props.data.edges.map((e) => [edgeKey(e.source, e.target), e]),
@@ -72,6 +90,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       panY = 0,
       frame = 0,
       disposed = false;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    type View = { zoom: number; x: number; y: number };
+    let camera: { from: View; to: View; start: number } | null = null;
     let hoverId: number | null = null;
     const pointers = new Map<number, { x: number; y: number }>();
     let startX = 0,
@@ -96,7 +117,23 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function invalidateFrame() {
       if (!frame && !disposed) frame = requestAnimationFrame(draw);
     }
-    function fit() {
+    function moveView(to: View, animate: boolean) {
+      // Large graphs avoid repeated canvas work. Wheel and touch stay direct.
+      if (animate && !reducedMotion.matches && nodes.length <= 2000) {
+        camera = {
+          from: { zoom, x: panX, y: panY },
+          to,
+          start: performance.now(),
+        };
+      } else {
+        camera = null;
+        zoom = to.zoom;
+        panX = to.x;
+        panY = to.y;
+      }
+      invalidateFrame();
+    }
+    function fit(animate = false) {
       if (!width || !height) return;
       if (!nodes.length) {
         invalidateFrame();
@@ -114,7 +151,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       const availableWidth = width - (width > 700 ? 120 : 42);
       const availableHeight = height - (width > 700 ? 160 : 230);
-      zoom = Math.max(
+      const nextZoom = Math.max(
         0.025,
         Math.min(
           2,
@@ -122,9 +159,14 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           availableHeight / (maxY - minY || 1),
         ),
       );
-      panX = width / 2 - ((minX + maxX) / 2) * zoom;
-      panY = height / 2 + 20 - ((minY + maxY) / 2) * zoom;
-      invalidateFrame();
+      moveView(
+        {
+          zoom: nextZoom,
+          x: width / 2 - ((minX + maxX) / 2) * nextZoom,
+          y: height / 2 + 20 - ((minY + maxY) / 2) * nextZoom,
+        },
+        animate,
+      );
     }
     function clearHover() {
       hoverId = null;
@@ -133,6 +175,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       invalidateFrame();
     }
     function zoomAt(factor: number, x = width / 2, y = height / 2) {
+      camera = null;
       const next = Math.max(0.025, Math.min(12, zoom * factor));
       panX = x - ((x - panX) * next) / zoom;
       panY = y - ((y - panY) * next) / zoom;
@@ -140,8 +183,23 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       clearHover();
     }
     api.current = {
-      fit,
-      zoom: zoomAt,
+      fit: () => {
+        clearHover();
+        fit(true);
+      },
+      zoom: (factor) => {
+        const base = camera?.to ?? { zoom, x: panX, y: panY };
+        const next = Math.max(0.025, Math.min(12, base.zoom * factor));
+        moveView(
+          {
+            zoom: next,
+            x: width / 2 - ((width / 2 - base.x) * next) / base.zoom,
+            y: height / 2 - ((height / 2 - base.y) * next) / base.zoom,
+          },
+          true,
+        );
+        clearHover();
+      },
       focus(id) {
         const p = positions.get(id);
         if (!p) return;
@@ -235,6 +293,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     }
     function down(event: PointerEvent) {
       if (event.button !== 0) return;
+      camera = null;
       const p = local(event);
       pointers.set(event.pointerId, p);
       canvas.setPointerCapture(event.pointerId);
@@ -305,8 +364,21 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     canvas.addEventListener("pointerleave", clearHover);
     canvas.addEventListener("wheel", wheel, { passive: false });
 
-    function draw() {
+    function draw(now: number) {
       frame = 0;
+      if (camera) {
+        const progress = reducedMotion.matches
+          ? 1
+          : Math.min(1, (now - camera.start) / 160);
+        const eased = 1 - (1 - progress) ** 3;
+        zoom = camera.from.zoom + (camera.to.zoom - camera.from.zoom) * eased;
+        panX = camera.from.x + (camera.to.x - camera.from.x) * eased;
+        panY = camera.from.y + (camera.to.y - camera.from.y) * eased;
+        if (progress === 1) camera = null;
+        else invalidateFrame();
+      }
+      canvas.dataset.animating = String(camera !== null);
+      canvas.dataset.zoom = String(zoom);
       const s = state.current;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
@@ -477,6 +549,127 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.fillText(n.name, x + w / 2, y + 13);
         if (!special) labels++;
       }
+      const visibleEnsembles: string[] = [];
+      if (s.showEnsembles) {
+        const candidates = ensembleMembers
+          .map(({ ensemble, members }) => {
+            const active = focus !== null && members.includes(focus);
+            const visible = members
+              .map(point)
+              .filter(
+                (p) =>
+                  p.x > 20 && p.x < width - 20 && p.y > 90 && p.y < height - 75,
+              );
+            return { ensemble, members, active, visible };
+          })
+          .filter((item) => item.visible.length >= (item.active ? 1 : 2))
+          .sort(
+            (a, b) =>
+              Number(b.active) - Number(a.active) ||
+              b.ensemble.concerts - a.ensemble.concerts ||
+              a.ensemble.id.localeCompare(b.ensemble.id),
+          )
+          .slice(0, 100);
+        let activeLabels = 0;
+        for (const { ensemble, members, active, visible } of candidates) {
+          if (active && activeLabels >= 3) continue;
+          if (
+            !active &&
+            (visibleEnsembles.length >=
+              (width > 700 ? (zoom < 0.6 ? 4 : 12) : 4) ||
+              visible.length < members.length / 2)
+          )
+            continue;
+          const center = {
+            x: visible.reduce((sum, p) => sum + p.x, 0) / visible.length,
+            y: visible.reduce((sum, p) => sum + p.y, 0) / visible.length,
+          };
+          ctx.font =
+            '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          let name = ensemble.name;
+          const maxWidth = Math.min(230, width - 60);
+          while (ctx.measureText(name).width > maxWidth && name.length > 1)
+            name = name.slice(0, -2).trimEnd() + "…";
+          const w = Math.max(110, ctx.measureText(name).width + 24),
+            h = 38;
+          const spots = [
+            { x: center.x - w / 2, y: center.y - h / 2 },
+            {
+              x: center.x - w / 2,
+              y: Math.min(...visible.map((p) => p.y)) - h - 22,
+            },
+            {
+              x: center.x - w / 2,
+              y: Math.max(...visible.map((p) => p.y)) + 32,
+            },
+            { x: center.x - w / 2, y: center.y - 70 },
+            { x: center.x - w / 2, y: center.y + 40 },
+          ].map((p) => ({
+            x: Math.max(8, Math.min(width - w - 8, p.x)),
+            y: Math.max(95, Math.min(height - h - 80, p.y)),
+          }));
+          const overlap = (p: { x: number; y: number }) =>
+            occupied.reduce(
+              (sum, b) =>
+                sum +
+                Math.max(0, Math.min(p.x + w, b.x + b.w) - Math.max(p.x, b.x)) *
+                  Math.max(
+                    0,
+                    Math.min(p.y + h, b.y + b.h) - Math.max(p.y, b.y),
+                  ),
+              0,
+            ) +
+            nodes.reduce((sum, node) => {
+              const n = point(node.id);
+              return (
+                sum +
+                (n.x > p.x - 8 &&
+                n.x < p.x + w + 8 &&
+                n.y > p.y - 8 &&
+                n.y < p.y + h + 8
+                  ? 1000
+                  : 0)
+              );
+            }, 0);
+          const best = spots.reduce((a, b) =>
+            overlap(a) <= overlap(b) ? a : b,
+          );
+          if (!active && overlap(best) > 0) continue;
+          const { x, y } = best;
+          if (active) {
+            ctx.save();
+            ctx.setLineDash([3, 5]);
+            ctx.strokeStyle = "#536c5370";
+            ctx.lineWidth = 0.9;
+            ctx.beginPath();
+            for (const id of members) {
+              const p = point(id);
+              ctx.moveTo(x + w / 2, y + h / 2);
+              ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+            ctx.restore();
+            activeLabels++;
+          }
+          occupied.push({ x: x - 6, y: y - 6, w: w + 12, h: h + 12 });
+          ctx.fillStyle = active ? "#e9eee2" : "#f1f3eb";
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = active ? "#809472" : "#c9d1bf";
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(x, y, w, h);
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#7b876e";
+          ctx.font =
+            '500 8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          ctx.fillText("GRUP / PROJE", x + w / 2, y + 12);
+          ctx.fillStyle = active ? "#315434" : "#536c53";
+          ctx.font =
+            '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          ctx.fillText(name, x + w / 2, y + 28);
+          visibleEnsembles.push(ensemble.name);
+        }
+      }
+      canvas.dataset.ensembles = JSON.stringify(visibleEnsembles);
       // Expose the rendered state for interaction checks.
       canvas.dataset.visibleEdges = String(s.edges.length);
       canvas.dataset.focus = focus === null ? "" : String(focus);
@@ -500,7 +693,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.removeEventListener("wheel", wheel);
       invalidate.current = () => {};
     };
-  }, [props.data, props.counts, props.engine, props.spacing]);
+  }, [props.data, props.counts, props.ensembles, props.engine, props.spacing]);
 
   return (
     <canvas
