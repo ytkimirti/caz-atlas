@@ -10,12 +10,10 @@ export function filterGraph(
   data: Pick<Atlas, "nodes" | "edges">,
   counts: Record<string, number>,
   minConcerts: number | null,
-  instrument: string,
   venueMembers?: Record<string, number>,
 ) {
   const nodes: Musician[] = data.nodes.filter(
     (node) =>
-      (!instrument || node.group === instrument) &&
       (minConcerts === null || (counts[node.id] ?? 0) > minConcerts) &&
       (!venueMembers || (venueMembers[node.id] ?? 0) > 0),
   );

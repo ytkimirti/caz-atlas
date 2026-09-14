@@ -22,7 +22,6 @@ const graph = filterGraph(
   { nodes: atlas.nodes, edges: concerts.edges },
   concerts.counts,
   process.argv.includes("--all") ? null : 10,
-  "",
 );
 const nodes = graph.nodes.map((n) => ({
   id: n.id,

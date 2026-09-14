@@ -1273,3 +1273,72 @@ select {
     opacity: 0.55;
   }
 }
+
+.instrument-explorer {
+  position: absolute;
+  top: 80px;
+  right: 24px;
+  width: 292px;
+  padding: 8px;
+  z-index: 3;
+}
+.instrument-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.instrument-control .select-wrap {
+  flex: 1;
+  min-width: 0;
+}
+.instrument-control select {
+  border: 0;
+}
+.instrument-summary {
+  padding: 4px 9px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.instrument-explorer .collaborator-heading {
+  margin: 8px 9px;
+}
+.instrument-ranking {
+  max-height: min(240px, 35dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.instrument-ranking small {
+  white-space: nowrap;
+}
+.atlas:has(.instrument-explorer) .selection-panel {
+  top: 140px;
+  max-height: calc(100dvh - 230px);
+}
+.atlas:has(.instrument-summary) .selection-panel {
+  top: 164px;
+  max-height: calc(100dvh - 254px);
+}
+@media (min-width: 1500px) {
+  .instrument-explorer {
+    right: 32px;
+    top: 86px;
+  }
+}
+@media (max-width: 700px) {
+  .instrument-explorer {
+    top: 154px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+  .instrument-ranking {
+    max-height: min(180px, 25dvh);
+  }
+  .atlas:has(.instrument-explorer) .selection-panel {
+    top: auto;
+    max-height: min(36dvh, calc(100dvh - 362px));
+  }
+  .atlas:has(.filter-panel) .instrument-explorer {
+    display: none;
+  }
+}

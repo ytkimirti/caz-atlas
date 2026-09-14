@@ -69,7 +69,6 @@ describe("Musician graph", () => {
       { ...fixture, edges: [{ source: 1, target: 2, weight: 1 }] },
       { 1: 20, 2: 20 },
       10,
-      "",
       { 1: 20, 2: 20 },
     );
     expect(edgesBySharedConcerts(fixture.edges, 3)).toContainEqual({
@@ -80,18 +79,13 @@ describe("Musician graph", () => {
     expect(edgesBySharedConcerts(venueGraph.edges, 3)).toEqual([]);
   });
   test("concert threshold is strict and filters remove dangling edges", () => {
-    const filtered = filterGraph(
-      fixture,
-      { 1: 10, 2: 11, 3: 25, 4: 0 },
-      10,
-      "",
-    );
+    const filtered = filterGraph(fixture, { 1: 10, 2: 11, 3: 25, 4: 0 }, 10);
     expect(filtered.nodes.map((n) => n.id)).toEqual([2, 3]);
     expect(filtered.edges).toEqual([{ source: 2, target: 3, weight: 4 }]);
-    expect(filterGraph(fixture, {}, null, "").nodes).toHaveLength(5);
-    expect(filterGraph(fixture, {}, 0, "").nodes).toHaveLength(0);
+    expect(filterGraph(fixture, {}, null).nodes).toHaveLength(5);
+    expect(filterGraph(fixture, {}, 0).nodes).toHaveLength(0);
   });
-  test("venue membership and instrument filters intersect", () => {
+  test("venue filtering keeps collaborators across instruments", () => {
     const data = {
       ...fixture,
       nodes: fixture.nodes.map((n) => ({
@@ -99,11 +93,11 @@ describe("Musician graph", () => {
         group: n.id === 3 ? "Drums" : "Piano",
       })),
     };
-    const filtered = filterGraph(data, { 1: 99, 2: 20, 3: 30 }, 10, "Piano", {
+    const filtered = filterGraph(data, { 1: 99, 2: 20, 3: 30 }, 10, {
       2: 20,
       3: 30,
     });
-    expect(filtered.nodes.map((n) => n.id)).toEqual([2]);
-    expect(filtered.edges).toEqual([]);
+    expect(filtered.nodes.map((n) => n.id)).toEqual([2, 3]);
+    expect(filtered.edges).toEqual([{ source: 2, target: 3, weight: 4 }]);
   });
 });

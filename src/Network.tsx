@@ -22,6 +22,7 @@ interface Props {
   hovered: number | null;
   path: number[];
   labels: boolean;
+  instrument: string;
   engine: LayoutEngine;
   spacing: number;
   onLayoutStatus: (status: LayoutStatus) => void;
@@ -52,6 +53,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       props.hovered,
       props.path,
       props.labels,
+      props.instrument,
       props.edges,
       props.ensembles,
       props.showEnsembles,
@@ -389,6 +391,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       );
       const routeNodes = new Set(s.path),
         routeEdges = pathEdges(s.path);
+      const highlighted = new Set(
+        nodes
+          .filter((node) => node.group === s.instrument)
+          .map((node) => node.id),
+      );
       const emphasized = new Set([...connected, ...routeNodes]);
       if (s.selected !== null) emphasized.add(s.selected);
       function lines(edges: Edge[], color: string, lineWidth: number) {
@@ -426,7 +433,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         );
       // Draw collaborators last so their larger markers stay above the graph.
       const drawOrder = [
-        ...nodes.filter((n) => !emphasized.has(n.id)),
+        ...nodes.filter((n) => !emphasized.has(n.id) && !highlighted.has(n.id)),
+        ...nodes.filter((n) => highlighted.has(n.id) && !emphasized.has(n.id)),
         ...nodes.filter((n) => emphasized.has(n.id)),
       ];
       for (const node of drawOrder) {
@@ -452,6 +460,16 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               ? "#28644d"
               : groupInfo(node.group).color;
         ctx.fill();
+        if (highlighted.has(node.id)) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2);
+          ctx.strokeStyle = "#fafaf6";
+          ctx.lineWidth = 4;
+          ctx.stroke();
+          ctx.strokeStyle = groupInfo(node.group).color;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
         if (special) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2);
@@ -477,7 +495,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ...(s.selected === null ? [] : [s.selected]),
         ...s.path,
         ...collaborators.map((n) => n.id),
-        ...(focus === null && s.labels ? ranked.map((n) => n.id) : []),
+        ...(focus === null && s.labels
+          ? ranked
+              .filter((node) => !s.instrument || highlighted.has(node.id))
+              .map((node) => node.id)
+          : []),
       ]);
       const labelLimit =
         focus === null ? (width > 700 ? 20 : 8) : width > 700 ? 12 : 6;
@@ -613,6 +635,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.dataset.ensembles = JSON.stringify(visibleEnsembles);
       // Expose the rendered state for interaction checks.
       canvas.dataset.visibleEdges = String(s.edges.length);
+      canvas.dataset.highlighted = [...highlighted].join(",");
+      canvas.dataset.view = `${zoom},${panX},${panY}`;
       canvas.dataset.focus = focus === null ? "" : String(focus);
       canvas.dataset.path = s.path.join(",");
       canvas.dataset.selectedPosition =

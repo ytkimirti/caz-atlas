@@ -303,10 +303,9 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
         counts,
         minConcerts,
-        instrument,
         venue?.musicians,
       ),
-    [data, concerts.edges, counts, minConcerts, instrument, venue],
+    [data, concerts.edges, counts, minConcerts, venue],
   );
   const visibleIds = useMemo(
     () => new Set(graph.nodes.map((n) => n.id)),
@@ -341,6 +340,10 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || b.degree - a.degree,
       ),
     [graph, counts],
+  );
+  const highlightedMusicians = useMemo(
+    () => ranked.filter((node) => node.group === instrument),
+    [ranked, instrument],
   );
   const musician = selected === null ? null : byId.get(selected)!;
   const hoveredMusician = hovered === null ? null : byId.get(hovered)!;
@@ -405,7 +408,6 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   function resetFilters() {
     setMinConcerts(null);
     setMinSharedConcerts(1);
-    setInstrument("");
     setVenueId("");
     setVenueQuery("");
   }
@@ -443,6 +445,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         hovered={hovered}
         path={path}
         labels={labels}
+        instrument={instrument}
         engine={engine}
         spacing={spacing}
         onLayoutStatus={setLayoutStatus}
@@ -511,17 +514,13 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         >
           <SlidersHorizontal size={17} />
           <span>Filtreler</span>
-          {(minConcerts !== null ||
-            venueId ||
-            instrument ||
-            minSharedConcerts > 1) && <i className="filter-dot" />}
+          {(minConcerts !== null || venueId || minSharedConcerts > 1) && (
+            <i className="filter-dot" />
+          )}
         </button>
       </div>
 
-      {(minConcerts !== null ||
-        venue ||
-        instrument ||
-        minSharedConcerts > 1) && (
+      {(minConcerts !== null || venue || minSharedConcerts > 1) && (
         <div className="active-filters">
           {minSharedConcerts > 1 && (
             <button
@@ -547,15 +546,6 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               aria-label="Mekan filtresini kaldır"
             >
               {venue.name}
-              <X size={12} />
-            </button>
-          )}
-          {instrument && (
-            <button
-              onClick={() => setInstrument("")}
-              aria-label="Enstrüman filtresini kaldır"
-            >
-              {groupInfo(instrument).name}
               <X size={12} />
             </button>
           )}
@@ -687,26 +677,6 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             )}
           </div>
           <div className="filter-section">
-            <label className="field-heading" htmlFor="instrument">
-              Enstrüman
-            </label>
-            <div className="select-wrap">
-              <select
-                id="instrument"
-                value={instrument}
-                onChange={(e) => setInstrument(e.target.value)}
-              >
-                <option value="">Tüm enstrümanlar</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} />
-            </div>
-          </div>
-          <div className="filter-section">
             <div className="field-heading">
               <span>En az ortak konser</span>
             </div>
@@ -751,6 +721,79 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           </div>
         </section>
       )}
+
+      <section
+        className="instrument-explorer surface"
+        aria-label="Enstrüman vurgulama"
+      >
+        <div className="instrument-control">
+          <div className="select-wrap">
+            <select
+              id="instrument"
+              aria-label="Enstrüman vurgula"
+              aria-describedby={instrument ? "instrument-summary" : undefined}
+              value={instrument}
+              onChange={(event) => setInstrument(event.target.value)}
+            >
+              <option value="">Enstrüman vurgula</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} />
+          </div>
+          {instrument && (
+            <button
+              className="icon-button"
+              aria-label="Vurgulamayı kaldır"
+              onClick={() => setInstrument("")}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {instrument && (
+          <>
+            <p
+              id="instrument-summary"
+              className="instrument-summary"
+              aria-live="polite"
+            >
+              Ağda {number(highlightedMusicians.length)} müzisyen vurgulanıyor.
+            </p>
+            {!musician && (
+              <>
+                <div className="collaborator-heading">
+                  <span>Konser sayısına göre</span>
+                  <small>{venue ? venue.name : "Arşiv"}</small>
+                </div>
+                <div
+                  className="collaborators instrument-ranking"
+                  onMouseLeave={() => setHoveredId(null)}
+                >
+                  {highlightedMusicians.map((node) => (
+                    <button
+                      key={node.id}
+                      onClick={() => pick(node.id)}
+                      onMouseEnter={() => setHoveredId(node.id)}
+                      onFocus={() => setHoveredId(node.id)}
+                      onBlur={() => setHoveredId(null)}
+                    >
+                      <span>{node.name}</span>
+                      <small>{number(counts[node.id] ?? 0)} konser</small>
+                    </button>
+                  ))}
+                  {!highlightedMusicians.length && (
+                    <p>Bu görünümde müzisyen yok.</p>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </section>
 
       {musician && (
         <section

@@ -19,6 +19,17 @@ const page = await browser.newPage({
   reducedMotion: "reduce",
   colorScheme: "dark",
 });
+await page.addInitScript(() => {
+  const OriginalWorker = window.Worker;
+  Object.assign(window, { layoutWorkers: 0 });
+  window.Worker = class extends OriginalWorker {
+    constructor(url: string | URL, options?: WorkerOptions) {
+      super(url, options);
+      const observed = window as unknown as { layoutWorkers: number };
+      observed.layoutWorkers++;
+    }
+  };
+});
 const errors: string[] = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const canvas = page.locator(".network-canvas");
@@ -72,7 +83,6 @@ try {
     { nodes: data.nodes, edges: concerts.edges },
     concerts.counts,
     10,
-    "",
   );
   const visibleEdges = Number(await canvas.getAttribute("data-visible-edges"));
   expect(visibleEdges).toBeGreaterThan(0);
@@ -152,6 +162,86 @@ try {
   await search.blur();
   await page.screenshot({ path: ".cache/minimal-desktop.png" });
   await checkNames(20);
+
+  // Highlighting preserves topology, layout, camera, selection and cross-instrument ties.
+  const instrument = page.getByLabel("Enstrüman vurgula", { exact: true });
+  const snapshot = async () => ({
+    view: await canvas.getAttribute("data-view"),
+    edges: await canvas.getAttribute("data-visible-edges"),
+    graph: await canvas.getAttribute("aria-label"),
+    workers: await page.evaluate(
+      () => (window as unknown as { layoutWorkers: number }).layoutWorkers,
+    ),
+  });
+  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-zoom")))
+    .toBeCloseTo(motion.before * 1.3, 5);
+  const beforeHighlight = await snapshot();
+  const pianists = defaultGraph.nodes
+    .filter((node) => node.group === "Piano")
+    .sort(
+      (a, b) =>
+        (concerts.counts[b.id] ?? 0) - (concerts.counts[a.id] ?? 0) ||
+        b.degree - a.degree,
+    );
+  await instrument.selectOption("Piano");
+  await expect(canvas).toHaveAttribute(
+    "data-highlighted",
+    defaultGraph.nodes
+      .filter((node) => node.group === "Piano")
+      .map((node) => node.id)
+      .join(","),
+  );
+  expect(await snapshot()).toEqual(beforeHighlight);
+  await expect(page.locator(".instrument-ranking button span")).toHaveText(
+    pianists.map((node) => node.name),
+  );
+  await expect(
+    page.locator(".instrument-ranking button small").first(),
+  ).toHaveText(
+    `${concerts.counts[pianists[0].id].toLocaleString("tr-TR")} konser`,
+  );
+  await page.screenshot({ path: ".cache/instrument-piano.png" });
+  await page.locator(".instrument-ranking button").first().click();
+  await page.mouse.move(1510, 700);
+  const pianist = pianists[0];
+  const ties = adjacency(defaultGraph).get(pianist.id)!.slice(0, 6);
+  expect(
+    ties.some(
+      (tie) => data.nodes.find((node) => node.id === tie.id)!.group !== "Piano",
+    ),
+  ).toBe(true);
+  await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
+  await expect(
+    page.locator(".selection-panel .collaborators button span"),
+  ).toHaveText(
+    ties.map((tie) => data.nodes.find((node) => node.id === tie.id)!.name),
+  );
+  const selectedView = await snapshot();
+  const selectedPosition = await canvas.getAttribute("data-selected-position");
+  await instrument.selectOption("Brass");
+  await expect(canvas).toHaveAttribute(
+    "data-highlighted",
+    defaultGraph.nodes
+      .filter((node) => node.group === "Brass")
+      .map((node) => node.id)
+      .join(","),
+  );
+  expect(await snapshot()).toEqual(selectedView);
+  await expect(canvas).toHaveAttribute(
+    "data-selected-position",
+    selectedPosition!,
+  );
+  await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
+  await page.reload();
+  await ready();
+  await expect(instrument).toHaveValue("Brass");
+  await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
+  await page.getByRole("button", { name: "Seçimi kaldır" }).click();
+  await page.getByRole("button", { name: "Vurgulamayı kaldır" }).click();
+  await expect(canvas).toHaveAttribute("data-highlighted", "");
+  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
 
   // A popular musician must not bypass the budget or cover other names.
   const hub = defaultGraph.nodes.find((node) => node.key === "MishaPashkov")!;
@@ -238,7 +328,6 @@ try {
     { nodes: data.nodes, edges: concerts.edges },
     concerts.counts,
     100,
-    "",
   );
   await expect(page.locator(".filter-footer")).toContainText(
     expected.nodes.length.toLocaleString("tr-TR"),
@@ -255,7 +344,6 @@ try {
     { nodes: data.nodes, edges: venue.edges },
     venue.musicians,
     10,
-    "",
     venue.musicians,
   );
   await expect(page.locator(".filter-footer")).toContainText(
@@ -273,14 +361,19 @@ try {
   await expect(page.locator(".active-filters")).toContainText(
     "Nardis Jazz Club",
   );
-  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
-  await page.getByLabel("Enstrüman", { exact: true }).selectOption("Guitar");
-  await ready();
-  await search.fill("Asude");
-  await expect(page.locator(".search-results").getByRole("option")).toHaveCount(
-    0,
-  );
+  await page
+    .getByLabel("Enstrüman vurgula", { exact: true })
+    .selectOption("Guitar");
+  const otherInstrument = venueGraph.nodes.find(
+    (node) => node.group !== "Guitar",
+  )!;
+  await search.fill(otherInstrument.name);
+  await expect(
+    page.locator(".search-results").getByRole("option").first(),
+  ).toContainText(otherInstrument.name);
   await search.press("Escape");
+  await page.getByRole("button", { name: "Vurgulamayı kaldır" }).click();
+  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
   await page
     .getByRole("button", { name: "Filtreleri temizle", exact: true })
     .click();
@@ -297,6 +390,15 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await instrument.selectOption("Brass");
+  await expect(page.locator(".instrument-ranking")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: ".cache/instrument-mobile.png" });
+  await page.getByRole("button", { name: "Vurgulamayı kaldır" }).click();
   await page.screenshot({ path: ".cache/minimal-mobile.png" });
   await checkNames(8);
   await choose("asude sasmaz");
@@ -391,7 +493,7 @@ try {
   await recovery.close();
   expect(errors).toEqual([]);
   console.log(
-    "UI verified: full-screen light canvas, shared-concert thresholds and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
+    "UI verified: full-screen light canvas, shared-concert thresholds and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument highlighting, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
   );
 } finally {
   await browser.close();
