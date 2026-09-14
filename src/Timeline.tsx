@@ -13,6 +13,7 @@ interface Props {
   musicians: number;
   edges: number;
   concerts: number;
+  calculating: boolean;
   onRange: (range: DateRange) => void;
   onCursor: (cursor: number) => void;
 }
@@ -57,6 +58,7 @@ export default function Timeline({
   musicians,
   edges,
   concerts,
+  calculating,
   onRange,
   onCursor,
 }: Props) {
@@ -79,12 +81,13 @@ export default function Timeline({
       setPlaying(false);
       return;
     }
+    if (calculating) return;
     const timer = window.setTimeout(
       () => onCursor(Math.min(range[1], cursor + step)),
       300 / speed,
     );
     return () => window.clearTimeout(timer);
-  }, [playing, cursor, range, speed, step, onCursor]);
+  }, [playing, cursor, range, speed, step, onCursor, calculating]);
   useEffect(() => {
     const pause = () => {
       if (document.hidden) setPlaying(false);

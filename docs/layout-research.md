@@ -6,7 +6,7 @@ Investigated 14 September 2026 against the checked-in concert graph.
 
 Use **Topluluklar** (Communities) as the default. Detect groups of frequent collaborators with Louvain, run D3 inside each group, then position communities with weighted springs between groups and size-aware collision spacing. Keep **ForceAtlas2**, **D3**, and **ngraph** available for comparison. There is no universal best force engine for this dataset: global springs still tend to put a densely connected network in one central mass.
 
-Communities are computed from the full-history graph under the venue and concert-count filters using log-compressed edge weights, deterministic traversal and a selectable resolution: 0.8 (broad), 1.5 (balanced), or 3 (detailed). Timeline changes reveal musicians and relationships without recomputing their positions. Communities are layout aids, not verified bands, genres or social categories. Node colors still represent instruments. Cross-community collaboration weights influence positioning. Group size and collision spacing also affect distance, so it is not a quantitative relationship-strength scale. Disconnected networks are packed separately with no inferred relationship. Cross-group edges and shortest paths remain available.
+Communities are computed from the selected date window under the venue and concert-count filters using log-compressed edge weights, deterministic traversal and a selectable resolution: 0.8 (broad), 1.5 (balanced), or 3 (detailed). Changing dates or the playback cursor recomputes membership and positions using only collaborations in the displayed period. Communities are layout aids, not verified bands, genres or social categories. Node colors still represent instruments. Cross-community collaboration weights influence positioning. Group size and collision spacing also affect distance, so it is not a quantitative relationship-strength scale. Disconnected networks are packed separately with no inferred relationship. Cross-group edges and shortest paths remain available.
 
 ## Candidates and sources
 
@@ -29,7 +29,7 @@ The old strongest-three layout heuristic could also discard weak bridges between
 
 ## Implementation choices
 
-- All computation runs in a terminable Web Worker. Switching engine, spacing, grouping, venue or concert threshold cancels obsolete work; timeline, instrument highlights, selection and hover changes do not restart it.
+- All computation runs in a terminable Web Worker. Switching engine, spacing, grouping, dates, venue or concert threshold cancels obsolete work. Rapid manual scrubbing replaces pending calculations. Playback waits for each layout to finish before advancing, so it cannot repeatedly cancel a slow layout. Instrument highlights, selection and hover changes do not restart physics.
 - Previous positions stay visible while a replacement layout computes. A failed worker preserves the displayed positions and shows an accessible recovery message with a retry action, including when mobile panels are open.
 - `engine`, `spacing`, and `resolution` persist in the URL. Unknown values fall back to validated defaults.
 - Global D3, ForceAtlas2 and ngraph layouts normalize components by population and typical radius, compressing long radial tails. Communities mode uses its own compact local simulations and preserves the final geometry without radial compression.

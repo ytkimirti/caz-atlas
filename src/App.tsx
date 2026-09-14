@@ -324,16 +324,16 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     () => concerts.venues.find((v) => v.id === venueId),
     [concerts, venueId],
   );
-  const layoutCounts = venue?.musicians ?? concerts.counts;
-  const layoutGraph = useMemo(
+  const historyCounts = venue?.musicians ?? concerts.counts;
+  const historyGraph = useMemo(
     () =>
       filterGraph(
         { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
-        layoutCounts,
+        historyCounts,
         minConcerts,
-        layoutCounts,
+        historyCounts,
       ),
-    [data, concerts, layoutCounts, minConcerts, venue],
+    [data, concerts, historyCounts, minConcerts, venue],
   );
   const queryConcerts = useMemo(
     () => createConcertWindow(concerts.timeline, venueId),
@@ -368,18 +368,18 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         .sort((a, b) => b.musicians[selectedId!] - a.musicians[selectedId!]),
     [ensembles, selectedId],
   );
-  const counts = allDates ? layoutCounts : windowed.counts;
+  const counts = allDates ? historyCounts : windowed.counts;
   const graph = useMemo(
     () =>
       allDates
-        ? layoutGraph
+        ? historyGraph
         : filterGraph(
-            { nodes: layoutGraph.nodes, edges: windowed.edges },
+            { nodes: historyGraph.nodes, edges: windowed.edges },
             counts,
             minConcerts,
             counts,
           ),
-    [allDates, layoutGraph, windowed, counts, minConcerts],
+    [allDates, historyGraph, windowed, counts, minConcerts],
   );
   const visibleIds = useMemo(
     () => new Set(graph.nodes.map((n) => n.id)),
@@ -543,8 +543,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       <Network
         ref={network}
         data={graph}
-        layoutData={layoutGraph}
-        layoutCounts={layoutCounts}
+        layoutData={graph}
+        layoutCounts={counts}
         edges={edges}
         counts={counts}
         ensembles={ensembles}
@@ -1109,6 +1109,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         musicians={graph.nodes.length}
         edges={edges.length}
         concerts={windowed.concerts}
+        calculating={layoutStatus === "pending"}
         onRange={changeRange}
         onCursor={setCursor}
       />

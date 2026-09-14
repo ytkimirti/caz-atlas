@@ -44,8 +44,11 @@ try {
   await expect(canvas).not.toHaveAttribute("data-selected-position", "");
   const position = await canvas.getAttribute("data-selected-position");
   await show("2020-01");
-  await expect(canvas).toHaveAttribute("data-animating", "true");
-  await expect(canvas).toHaveAttribute("data-animating", "false");
+  await expect(canvas).toHaveAttribute("data-layout", "pending");
+  await expect(page.getByRole("progressbar")).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-layout", "ready", {
+    timeout: 45000,
+  });
   const windowed = concertWindow(
     concerts.timeline,
     monthIndex("1956-04"),
@@ -61,7 +64,7 @@ try {
     "data-visible-nodes",
     String(expected.nodes.length),
   );
-  await expect(canvas).toHaveAttribute("data-selected-position", position!);
+  await expect(canvas).not.toHaveAttribute("data-selected-position", position!);
   await expect(canvas).toHaveAttribute("data-layout", "ready");
   await page
     .getByRole("button", { name: "Seçimi kaldır", exact: true })
@@ -171,6 +174,9 @@ try {
     String(venueGraph.nodes.length),
   );
   // Instrument highlighting uses only the musicians in this date and venue window.
+  await expect(canvas).toHaveAttribute("data-layout", "ready", {
+    timeout: 45000,
+  });
   await expect(canvas).toHaveAttribute("data-animating", "false");
   const view = await canvas.getAttribute("data-view");
   const edges = await canvas.getAttribute("data-visible-edges");
@@ -258,7 +264,7 @@ try {
   await page.getByRole("button", { name: "Tüm tarihleri göster" }).click();
   expect(errors).toEqual([]);
   console.log(
-    "Timeline verified: dated graph counts, stable positions, month inputs, range dragging, keyboard, playback/pause, URL restore, empty dates, venue intersection, mobile touch and reduced motion.",
+    "Timeline verified: dated graph counts, recomputed positions, physics progress, month inputs, range dragging, keyboard, playback/pause, URL restore, empty dates, venue intersection, mobile touch and reduced motion.",
   );
 } finally {
   await browser.close();

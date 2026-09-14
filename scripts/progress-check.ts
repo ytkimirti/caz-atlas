@@ -1,7 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
+import { concertWindow, monthIndex } from "../src/chronology";
+import { filterGraph } from "../src/graph";
+import type { Atlas, ConcertIndex } from "../src/types";
 
-type Request = { nodes: { id: number }[] };
+type Request = {
+  nodes: { id: number; count: number }[];
+  edges: Atlas["edges"];
+};
 type ControlledWorker = {
   onmessage: ((event: MessageEvent) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
@@ -117,13 +123,11 @@ try {
   await expect(progress).toBeVisible();
   // A late result from the failed job must not settle the retry.
   await page.evaluate(() =>
-    window.layoutHarness.workers
-      .at(-2)!
-      .onmessage?.(
-        new MessageEvent("message", {
-          data: { status: "ready", positions: [] },
-        }),
-      ),
+    window.layoutHarness.workers.at(-2)!.onmessage?.(
+      new MessageEvent("message", {
+        data: { status: "ready", positions: [] },
+      }),
+    ),
   );
   await expect(canvas).toHaveAttribute("data-layout", "pending");
   await complete();
@@ -141,6 +145,13 @@ try {
   await page.getByLabel("Yerleşim", { exact: true }).selectOption("d3");
   await expect(progress).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(canvas).toHaveAttribute("width", "390");
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   await expect(canvas).not.toHaveAttribute("data-selected-position", "");
   const before = await canvas.getAttribute("data-selected-position");
   await fail();
@@ -169,6 +180,88 @@ try {
     await complete();
     await ready();
   }
+  // Date changes must send period-specific membership, weights and counts to physics.
+  await page.setViewportSize({ width: 1512, height: 982 });
+  await page.goto(base);
+  await expect(progress).toBeVisible();
+  await complete();
+  await ready();
+  const initialJobs = await page.evaluate(
+    () => window.layoutHarness.workers.length,
+  );
+  await page.getByLabel("Başlangıç tarihi", { exact: true }).fill("2018-01");
+  await expect(progress).toBeVisible();
+  const pendingJob = await page.evaluate(
+    () => window.layoutHarness.workers.length - 1,
+  );
+  expect(pendingJob).toBeGreaterThanOrEqual(initialJobs);
+  await page.getByLabel("Bitiş tarihi", { exact: true }).fill("2022-12");
+  await expect
+    .poll(() => page.evaluate(() => window.layoutHarness.workers.length))
+    .toBeGreaterThan(pendingJob + 1);
+  expect(
+    await page.evaluate(
+      (i) => window.layoutHarness.workers[i].terminated,
+      pendingJob,
+    ),
+  ).toBe(true);
+  const atlas: Atlas = await Bun.file(
+    new URL("../public/data/atlas.json", import.meta.url),
+  ).json();
+  const concerts: ConcertIndex = await Bun.file(
+    new URL("../public/data/concerts.json", import.meta.url),
+  ).json();
+  const period = concertWindow(
+    concerts.timeline,
+    monthIndex("2018-01"),
+    monthIndex("2022-12"),
+  );
+  const expected = filterGraph(
+    { nodes: atlas.nodes, edges: period.edges },
+    period.counts,
+    10,
+    period.counts,
+  );
+  const request = await page.evaluate(
+    () => window.layoutHarness.workers.at(-1)!.request!,
+  );
+  expect(request.nodes).toEqual(
+    expected.nodes.map((n) => ({ id: n.id, count: period.counts[n.id] || 0 })),
+  );
+  const orderedEdges = (edges: Atlas["edges"]) =>
+    [...edges].sort((a, b) => a.source - b.source || a.target - b.target);
+  expect(orderedEdges(request.edges)).toEqual(orderedEdges(expected.edges));
+  await page.evaluate(
+    (i) =>
+      window.layoutHarness.workers[i].onmessage?.(
+        new MessageEvent("message", {
+          data: { status: "ready", positions: [] },
+        }),
+      ),
+    pendingJob,
+  );
+  await expect(canvas).toHaveAttribute("data-layout", "pending");
+  await expect(progress).toBeVisible();
+  await complete();
+  await ready();
+  // Playback lets each period finish instead of continuously cancelling physics.
+  await page.getByRole("button", { name: "Ağın büyümesini oynat" }).click();
+  await expect(progress).toBeVisible();
+  const cursor = page.getByLabel("Gösterilen tarih", { exact: true });
+  const heldDate = await cursor.inputValue();
+  const heldJobs = await page.evaluate(
+    () => window.layoutHarness.workers.length,
+  );
+  await page.waitForTimeout(700);
+  await expect(cursor).toHaveValue(heldDate);
+  expect(await page.evaluate(() => window.layoutHarness.workers.length)).toBe(
+    heldJobs,
+  );
+  await complete();
+  await expect
+    .poll(async () => Number(await cursor.inputValue()))
+    .toBeGreaterThan(Number(heldDate));
+  await page.getByRole("button", { name: "Oynatmayı duraklat" }).click();
   await page.goto(`${base}?min=999999&worker-error=1`);
   await expect(page.locator(".empty-state")).toBeVisible();
   await expect(canvas).toHaveAttribute("data-layout", "ready");
@@ -178,7 +271,7 @@ try {
   );
   expect(errors).toEqual([]);
   console.log(
-    "Progress checks passed: held workers, mobile panels, reduced motion, busy semantics, preserved positions, retry, stale callbacks, construction/submission failures, empty graph.",
+    "Progress checks passed: held workers, mobile panels, reduced motion, busy semantics, preserved positions, retry, stale callbacks, dated worker inputs and cancellation, construction/submission failures, empty graph.",
   );
 } finally {
   await browser.close();
