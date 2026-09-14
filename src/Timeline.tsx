@@ -9,11 +9,14 @@ interface Props {
   bounds: DateRange;
   range: DateRange;
   cursor: number;
+  replayFrom: number;
   histogram: number[];
   musicians: number;
   edges: number;
   concerts: number;
   calculating: boolean;
+  playing: boolean;
+  onPlayingChange: (playing: boolean) => void;
   onRange: (range: DateRange) => void;
   onCursor: (cursor: number) => void;
 }
@@ -54,15 +57,17 @@ export default function Timeline({
   bounds,
   range,
   cursor,
+  replayFrom,
   histogram,
   musicians,
   edges,
   concerts,
   calculating,
+  playing,
+  onPlayingChange: setPlaying,
   onRange,
   onCursor,
 }: Props) {
-  const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [hover, setHover] = useState<number | null>(null);
   const track = useRef<HTMLDivElement>(null);
@@ -87,14 +92,14 @@ export default function Timeline({
       300 / speed,
     );
     return () => window.clearTimeout(timer);
-  }, [playing, cursor, range, speed, step, onCursor, calculating]);
+  }, [playing, cursor, range, speed, step, onCursor, calculating, setPlaying]);
   useEffect(() => {
     const pause = () => {
       if (document.hidden) setPlaying(false);
     };
     document.addEventListener("visibilitychange", pause);
     return () => document.removeEventListener("visibilitychange", pause);
-  }, []);
+  }, [setPlaying]);
   function updateRange(next: DateRange) {
     setPlaying(false);
     onRange(next);
@@ -154,7 +159,15 @@ export default function Timeline({
     >
       <div className="timeline-heading">
         <span className="section-caption">ZAMAN İÇİNDE KEŞFET</span>
-        <span>Bir dönem seç veya ağın büyümesini oynat.</span>
+        <span className={playing ? "timeline-live" : undefined}>
+          {playing ? (
+            <>
+              <i aria-hidden="true" /> CANLI · Bağlantılar hayat buluyor
+            </>
+          ) : (
+            "Bir dönem seç veya ağın büyümesini oynat."
+          )}
+        </span>
       </div>
       <div className="timeline-main">
         <div className="timeline-transport">
@@ -163,9 +176,11 @@ export default function Timeline({
             aria-label={
               playing ? "Oynatmayı duraklat" : "Ağın büyümesini oynat"
             }
+            aria-pressed={playing}
             disabled={range[0] === range[1]}
             onClick={() => {
-              if (!playing && cursor >= range[1]) onCursor(range[0]);
+              if (!playing && cursor >= range[1])
+                onCursor(Math.min(replayFrom, range[1] - 1));
               setPlaying(!playing);
             }}
           >

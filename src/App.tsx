@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Network as NetworkIcon,
   ChevronDown,
@@ -25,6 +25,7 @@ import {
   concertHistogram,
   concertEnsembles,
   createConcertWindow,
+  firstPlaybackMonth,
   monthIndex,
   monthValue,
   readRange,
@@ -363,7 +364,15 @@ function AtlasApp({
         range,
       )[1],
   );
+  const [playing, setPlaying] = useState(false);
+  const [livePhysics, setLivePhysics] = useState(false);
+  const changePlaying = useCallback((next: boolean) => {
+    if (next) setLivePhysics(true);
+    setPlaying(next);
+  }, []);
   function changeRange(next: DateRange) {
+    setPlaying(false);
+    setLivePhysics(false);
     setRange(next);
     setCursor(next[1]);
   }
@@ -407,6 +416,10 @@ function AtlasApp({
   const [selectedEnsembleId, setSelectedEnsembleId] = useState<string | null>(
     params.get("g"),
   );
+  const reportLayoutStatus = useCallback((status: LayoutStatus) => {
+    setLayoutStatus(status);
+    if (status === "fallback") setPlaying(false);
+  }, []);
   const [projects, setProjects] = useState<ProjectData | null>(null);
   const [projectError, setProjectError] = useState(false);
   const [projectAttempt, setProjectAttempt] = useState(0);
@@ -438,6 +451,10 @@ function AtlasApp({
       ),
     [data, concerts, historyCounts, minConcerts, venue],
   );
+  useEffect(() => {
+    setPlaying(false);
+    setLivePhysics(false);
+  }, [historyGraph, engine, mode, spacing, resolution]);
   const queryConcerts = useMemo(
     () => createConcertWindow(concerts.timeline, venueId),
     [concerts, venueId],
@@ -449,6 +466,10 @@ function AtlasApp({
   const histogram = useMemo(
     () => concertHistogram(concerts.timeline, bounds, venueId),
     [concerts, bounds, venueId],
+  );
+  const replayFrom = useMemo(
+    () => firstPlaybackMonth(concerts.timeline, range, minConcerts, venueId),
+    [concerts, range, minConcerts, venueId],
   );
   const allDates = range[0] === bounds[0] && cursor === bounds[1];
   const knownEnsembles = projects?.ensembles ?? EMPTY_ENSEMBLES;
@@ -711,8 +732,10 @@ function AtlasApp({
       <Network
         ref={network}
         data={graph}
-        layoutData={graph}
-        layoutCounts={counts}
+        layoutData={livePhysics ? historyGraph : graph}
+        layoutCounts={livePhysics ? historyCounts : counts}
+        playing={playing}
+        livePhysics={livePhysics}
         edges={edges}
         counts={counts}
         ensembles={ensembles}
@@ -730,7 +753,7 @@ function AtlasApp({
         mode={mode}
         spacing={spacing}
         resolution={resolution}
-        onLayoutStatus={setLayoutStatus}
+        onLayoutStatus={reportLayoutStatus}
         onSelect={select}
         onHover={setHoveredId}
       />
@@ -1570,10 +1593,13 @@ function AtlasApp({
         bounds={bounds}
         range={range}
         cursor={cursor}
+        replayFrom={replayFrom}
         histogram={histogram}
         musicians={graph.nodes.length}
         edges={edges.length}
         concerts={windowed.concerts}
+        playing={playing}
+        onPlayingChange={changePlaying}
         calculating={layoutStatus === "pending"}
         onRange={changeRange}
         onCursor={setCursor}

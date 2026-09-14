@@ -8,6 +8,7 @@ import {
   monthValue,
   readRange,
   parseMonth,
+  firstPlaybackMonth,
 } from "../../src/chronology";
 import type { ConcertIndex, DatedConcert } from "../../src/types";
 
@@ -19,6 +20,24 @@ const events: DatedConcert[] = [
 ];
 const jan = monthIndex("2020-01"),
   mar = monthIndex("2020-03");
+test("replay skips empty filtered history and keeps venue and date scope", () => {
+  expect(firstPlaybackMonth(events, [jan - 120, mar], null)).toBe(jan);
+  expect(firstPlaybackMonth(events, [jan, mar], 1)).toBe(jan + 1);
+  expect(firstPlaybackMonth(events, [jan, mar], 1, "A")).toBe(jan);
+  expect(firstPlaybackMonth(events, [mar, mar + 1], null)).toBe(mar);
+  expect(firstPlaybackMonth(events, [jan, mar], 100)).toBe(jan);
+  expect(
+    firstPlaybackMonth(
+      [
+        { date: "2020-01-01", venue: "A", musicians: [1, 2] },
+        { date: "2020-02-01", venue: "A", musicians: [1] },
+        { date: "2020-03-01", venue: "A", musicians: [2] },
+      ],
+      [jan, mar],
+      1,
+    ),
+  ).toBe(mar);
+});
 test("month boundaries are inclusive and isolated performers stay visible", () => {
   const result = concertWindow(events, jan, jan);
   expect(result.concerts).toBe(2);
