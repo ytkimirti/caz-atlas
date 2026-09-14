@@ -287,15 +287,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const focus = s.hovered ?? s.selected;
-      const active = new Set<number>(
-        focus === null
-          ? []
-          : [focus, ...(neighbors.get(focus) || []).map((n) => n.id)],
-      );
-      if (s.selected !== null) active.add(s.selected);
       const routeNodes = new Set(s.path),
         routeEdges = pathEdges(s.path);
-      for (const id of routeNodes) active.add(id);
       function lines(edges: Edge[], color: string, lineWidth: number) {
         ctx.beginPath();
         ctx.strokeStyle = color;
@@ -316,7 +309,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         }
         ctx.stroke();
       }
-      lines(s.edges, focus === null ? "#b8b9b080" : "#b8b9b023", 0.7);
+      lines(s.edges, "#b8b9b080", 0.7);
       if (focus !== null) {
         const focusEdges = (neighbors.get(focus) || []).map((n) =>
           edgesByKey.get(edgeKey(focus, n.id))!,
@@ -335,7 +328,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         if (p.x < -20 || p.y < -20 || p.x > width + 20 || p.y > height + 20)
           continue;
         const special = node.id === s.selected || node.id === s.hovered;
-        ctx.globalAlpha = focus === null || active.has(node.id) ? 1 : 0.12;
         ctx.beginPath();
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         ctx.fillStyle =
@@ -351,7 +343,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.stroke();
         }
       }
-      ctx.globalAlpha = 1;
       const occupied: { x: number; y: number; w: number; h: number }[] = [];
       const orderedIds = new Set([
         ...(s.hovered === null ? [] : [s.hovered]),
@@ -369,7 +360,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         if (
           !special &&
           (!s.labels ||
-            (focus !== null && !active.has(id)) ||
             labels >
               (width > 700 ? Math.min(65, 14 + zoom * 26) : 10 + zoom * 12))
         )
