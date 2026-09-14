@@ -287,8 +287,15 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const focus = s.hovered ?? s.selected;
+      const connected = new Set(
+        focus === null
+          ? []
+          : [focus, ...(neighbors.get(focus) || []).map((n) => n.id)],
+      );
       const routeNodes = new Set(s.path),
         routeEdges = pathEdges(s.path);
+      const emphasized = new Set([...connected, ...routeNodes]);
+      if (s.selected !== null) emphasized.add(s.selected);
       function lines(edges: Edge[], color: string, lineWidth: number) {
         ctx.beginPath();
         ctx.strokeStyle = color;
@@ -314,49 +321,64 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         const focusEdges = (neighbors.get(focus) || []).map((n) =>
           edgesByKey.get(edgeKey(focus, n.id))!,
         );
-        lines(focusEdges, s.path.length > 1 ? "#527b6850" : "#527b6890", 1);
+        lines(focusEdges, "#28644dd9", 1.8);
       }
       if (routeEdges.size)
         lines(
           [...routeEdges].map((key) => edgesByKey.get(key)!).filter(Boolean),
           "#b64e31",
-          2.4,
+          3.2,
         );
-      for (const node of nodes) {
+      // Draw collaborators last so their larger markers stay above the graph.
+      const drawOrder = [
+        ...nodes.filter((n) => !emphasized.has(n.id)),
+        ...nodes.filter((n) => emphasized.has(n.id)),
+      ];
+      for (const node of drawOrder) {
         const p = point(node.id),
-          r = radius(node.id);
+          r = emphasized.has(node.id)
+            ? Math.max(4.5, radius(node.id) + 2)
+            : radius(node.id);
         if (p.x < -20 || p.y < -20 || p.x > width + 20 || p.y > height + 20)
           continue;
         const special = node.id === s.selected || node.id === s.hovered;
+        if (emphasized.has(node.id)) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = "#fafaf6";
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         ctx.fillStyle =
           routeNodes.has(node.id) && s.path.length > 1
             ? "#b64e31"
-            : groupInfo(node.group).color;
+            : emphasized.has(node.id)
+              ? "#28644d"
+              : groupInfo(node.group).color;
         ctx.fill();
         if (special) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2);
           ctx.strokeStyle = node.id === s.selected ? "#252c27" : "#527b68";
-          ctx.lineWidth = 1.2;
+          ctx.lineWidth = 2;
           ctx.stroke();
         }
       }
       const occupied: { x: number; y: number; w: number; h: number }[] = [];
       const orderedIds = new Set([
+        ...ranked.filter((n) => !emphasized.has(n.id)).map((n) => n.id),
         ...(s.hovered === null ? [] : [s.hovered]),
         ...(s.selected === null ? [] : [s.selected]),
         ...s.path,
-        ...ranked.map((n) => n.id),
+        ...connected,
       ]);
       const byId = new Map(nodes.map((n) => [n.id, n]));
       let labels = 0;
       for (const id of orderedIds) {
         const n = byId.get(id);
         if (!n) continue;
-        const special =
-          id === s.selected || id === s.hovered || routeNodes.has(id);
+        const special = emphasized.has(id);
         if (
           !special &&
           (!s.labels ||
@@ -365,13 +387,51 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         )
           continue;
         const p = point(id),
-          r = radius(id);
+          r = special ? Math.max(4.5, radius(id) + 2) : radius(id);
         if (p.x < 16 || p.x > width - 16 || p.y < 60 || p.y > height - 55)
           continue;
         ctx.font = `${special ? 600 : 400} ${special ? 12 : 11}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
         const w = ctx.measureText(n.name).width + 10;
-        const x = Math.max(4, Math.min(width - w - 4, p.x - w / 2)),
+        let x = Math.max(4, Math.min(width - w - 4, p.x - w / 2)),
           y = p.y + r + 5;
+        if (special) {
+          const candidates = [
+            { x, y },
+            { x, y: p.y - r - 23 },
+            { x: p.x + r + 8, y: p.y - 9 },
+            { x: p.x - r - w - 8, y: p.y - 9 },
+            { x, y: p.y + r + 27 },
+            { x, y: p.y - r - 45 },
+          ].map((c) => ({
+            x: Math.max(4, Math.min(width - w - 4, c.x)),
+            y: Math.max(60, Math.min(height - 75, c.y)),
+          }));
+          const overlap = (c: { x: number; y: number }) =>
+            occupied.reduce(
+              (area, b) =>
+                area +
+                Math.max(0, Math.min(c.x + w, b.x + b.w) - Math.max(c.x, b.x)) *
+                  Math.max(
+                    0,
+                    Math.min(c.y + 18, b.y + b.h) - Math.max(c.y, b.y),
+                  ),
+              0,
+            );
+          const best = candidates.reduce((a, b) =>
+            overlap(a) <= overlap(b) ? a : b,
+          );
+          x = best.x;
+          y = best.y;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(
+            Math.max(x, Math.min(x + w, p.x)),
+            Math.max(y, Math.min(y + 18, p.y)),
+          );
+          ctx.strokeStyle = "#28644d80";
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        }
         if (
           !special &&
           occupied.some(
@@ -381,17 +441,17 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         )
           continue;
         occupied.push({ x: x - 5, y: y - 5, w: w + 10, h: 28 });
-        ctx.fillStyle = "#fafaf6ed";
+        ctx.fillStyle = special ? "#fafaf6" : "#fafaf6ed";
         ctx.fillRect(x, y, w, 18);
         ctx.fillStyle =
           routeNodes.has(id) && s.path.length > 1
             ? "#a8442b"
             : special
-              ? "#252c27"
+              ? "#174e38"
               : "#686e65";
         ctx.textAlign = "center";
         ctx.fillText(n.name, x + w / 2, y + 13);
-        labels++;
+        if (!special) labels++;
       }
       // Expose the rendered state for interaction checks.
       canvas.dataset.visibleEdges = String(s.edges.length);
