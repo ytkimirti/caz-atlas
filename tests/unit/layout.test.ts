@@ -1,0 +1,121 @@
+import { describe, expect, test } from "bun:test";
+import { computeLayout, layoutLinks } from "../../src/layout";
+import {
+  DEFAULT_ENGINE,
+  layoutEngines,
+  parseEngine,
+  parseSpacing,
+} from "../../src/layout-options";
+import { shortestPath } from "../../src/graph";
+import type { Edge } from "../../src/types";
+
+const nodes = Array.from({ length: 18 }, (_, id) => ({ id, count: 20 - id }));
+const edges: Edge[] = [];
+for (let i = 0; i < 8; i++) {
+  for (let j = i + 1; j < 8; j++) {
+    edges.push({ source: i, target: j, weight: 20 });
+    edges.push({ source: i + 8, target: j + 8, weight: 20 });
+  }
+}
+edges.push({ source: 7, target: 8, weight: 1 });
+
+test("sparse layout retains weak bridges between dense communities", () => {
+  const links = layoutLinks(nodes, edges);
+  expect(links).toContainEqual({ source: 7, target: 8, weight: 1 });
+  expect(links.length).toBeLessThan(edges.length);
+  const neighbors = new Map(
+    nodes.map((n) => [n.id, [] as { id: number; weight: number }[]]),
+  );
+  for (const e of links) {
+    neighbors.get(e.source)!.push({ id: e.target, weight: e.weight });
+    neighbors.get(e.target)!.push({ id: e.source, weight: e.weight });
+  }
+  expect(shortestPath(neighbors, 0, 15).length).toBeGreaterThan(0);
+});
+test("invalid URL settings recover to defaults", () => {
+  expect(parseEngine("unknown")).toBe(DEFAULT_ENGINE);
+  expect(parseEngine("ngraph")).toBe("ngraph");
+  for (const value of [null, "NaN", "Infinity", "-1", "0", "99"])
+    expect(parseSpacing(value)).toBe(1);
+  expect(parseSpacing("1.6")).toBe(1.6);
+});
+for (const { id: engine } of layoutEngines) {
+  describe(engine, () => {
+    test("finite, repeatable positions without mutating the graph", () => {
+      const request = {
+        nodes: structuredClone(nodes),
+        edges: structuredClone(edges),
+        engine,
+        spacing: 1,
+      };
+      const before = structuredClone(request);
+      const positions = computeLayout(request);
+      expect(request).toEqual(before);
+      expect(positions).toEqual(computeLayout(request));
+      expect(new Set(positions.map((p) => p.id)).size).toBe(nodes.length);
+      for (const p of positions) {
+        expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
+        for (const other of positions) {
+          if (p.id !== other.id)
+            expect(Math.hypot(p.x - other.x, p.y - other.y)).toBeGreaterThan(
+              15,
+            );
+        }
+      }
+    });
+    test("empty, isolated and single-node graphs", () => {
+      expect(
+        computeLayout({ nodes: [], edges: [], engine, spacing: 1 }),
+      ).toEqual([]);
+      for (const subset of [nodes.slice(0, 1), nodes]) {
+        const positions = computeLayout({
+          nodes: subset,
+          edges: [],
+          engine,
+          spacing: 1,
+        });
+        expect(positions.length).toBe(subset.length);
+        expect(new Set(positions.map((p) => `${p.x},${p.y}`)).size).toBe(
+          subset.length,
+        );
+      }
+    });
+    test("more spacing increases clearance", () => {
+      const minimum = (spacing: number) => {
+        const p = computeLayout({ nodes, edges, engine, spacing });
+        return Math.min(
+          ...p.flatMap((a, i) =>
+            p.slice(i + 1).map((b) => Math.hypot(a.x - b.x, a.y - b.y)),
+          ),
+        );
+      };
+      expect(minimum(1.6)).toBeGreaterThan(minimum(0.7));
+    });
+  });
+}
+
+test("communities allocate separate areas to strongly connected groups", () => {
+  const positions = computeLayout({
+    nodes,
+    edges,
+    engine: "communities",
+    spacing: 1,
+  });
+  const bounds = (start: number, end: number) => {
+    const group = positions.filter((p) => p.id >= start && p.id < end);
+    return {
+      left: Math.min(...group.map((p) => p.x)),
+      right: Math.max(...group.map((p) => p.x)),
+      top: Math.min(...group.map((p) => p.y)),
+      bottom: Math.max(...group.map((p) => p.y)),
+    };
+  };
+  const a = bounds(0, 8),
+    b = bounds(8, 16);
+  expect(
+    a.right < b.left ||
+      b.right < a.left ||
+      a.bottom < b.top ||
+      b.bottom < a.top,
+  ).toBe(true);
+});

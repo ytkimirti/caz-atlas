@@ -807,3 +807,70 @@ input[type="checkbox"] {
       border-color 0.12s;
   }
 }
+
+.layout-controls {
+  position: absolute;
+  left: 28px;
+  top: 140px;
+  width: 238px;
+  padding: 12px;
+}
+.layout-controls > label {
+  display: block;
+  font-size: 11px;
+  color: #686e65;
+  margin-bottom: 6px;
+}
+.layout-controls select {
+  width: 100%;
+  border: 1px solid #dfe2d7;
+  padding: 7px;
+  color: inherit;
+  background: #fafaf6;
+}
+.layout-controls p {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #686e65;
+  margin-top: 8px;
+}
+.layout-spacing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.layout-spacing label {
+  flex: 1;
+  font-size: 11px;
+}
+.layout-spacing select {
+  width: 120px;
+}
+.layout-controls .layout-feedback {
+  color: #38614a;
+}
+@media (max-width: 700px) {
+  .layout-controls {
+    top: auto;
+    bottom: 84px;
+    left: 12px;
+    width: 192px;
+    padding: 8px;
+  }
+  .layout-controls > label,
+  #layout-description {
+    display: none;
+  }
+  .layout-controls .layout-feedback {
+    font-size: 10px;
+    margin-top: 4px;
+  }
+  .layout-spacing {
+    margin-top: 5px;
+  }
+  .atlas:has(.filter-panel) .layout-controls,
+  .atlas:has(.selection-panel) .layout-controls {
+    display: none;
+  }
+}

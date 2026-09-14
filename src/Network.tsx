@@ -1,4 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import type { LayoutEngine, LayoutStatus } from "./layout-options";
+import type { LayoutResponse } from "./layout";
 import type { Atlas, Edge } from "./types";
 import { groupInfo } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
@@ -16,12 +18,16 @@ interface Props {
   hovered: number | null;
   path: number[];
   labels: boolean;
+  engine: LayoutEngine;
+  spacing: number;
+  onLayoutStatus: (status: LayoutStatus) => void;
   onSelect: (id: number | null) => void;
   onHover: (id: number | null) => void;
 }
 
 const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previousPositions = useRef(new Map<number, { x: number; y: number }>());
   const state = useRef(props);
   state.current = props;
   const api = useRef<NetworkHandle>({ fit() {}, zoom() {}, focus() {} });
@@ -44,7 +50,12 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     const nodes = props.data.nodes;
-    const positions = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+    const positions = new Map(
+      nodes.map((n) => [
+        n.id,
+        previousPositions.current.get(n.id) ?? { x: n.x, y: n.y },
+      ]),
+    );
     const neighbors = adjacency(props.data);
     const edgesByKey = new Map(
       props.data.edges.map((e) => [edgeKey(e.source, e.target), e]),
@@ -70,14 +81,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
 
     function point(id: number) {
       const p = positions.get(id)!;
-      return { x: p.x * aspect() * zoom + panX, y: p.y * zoom + panY };
-    }
-    function aspect() {
-      return width > 700 ? 1.35 : 0.55;
+      return { x: p.x * zoom + panX, y: p.y * zoom + panY };
     }
     function radius(id: number) {
       return Math.max(
-        2,
+        0.75,
         Math.min(
           9,
           (2 + Math.log2(1 + (state.current.counts[id] || 1)) * 0.5) *
@@ -99,8 +107,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         maxX = -Infinity,
         maxY = -Infinity;
       for (const p of positions.values()) {
-        minX = Math.min(minX, p.x * aspect());
-        maxX = Math.max(maxX, p.x * aspect());
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
         minY = Math.min(minY, p.y);
         maxY = Math.max(maxY, p.y);
       }
@@ -164,22 +172,38 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       type: "module",
     });
     canvas.dataset.layout = "pending";
-    worker.onmessage = (
-      event: MessageEvent<{ id: number; x: number; y: number }[]>,
-    ) => {
-      for (const node of event.data)
+    canvas.dataset.engine = props.engine;
+    props.onLayoutStatus("pending");
+    const fallback = () => {
+      if (disposed) return;
+      for (const n of nodes) positions.set(n.id, { x: n.x, y: n.y });
+      canvas.dataset.layout = "fallback";
+      state.current.onLayoutStatus("fallback");
+      worker.terminate();
+      fit();
+    };
+    worker.onmessage = (event: MessageEvent<LayoutResponse>) => {
+      if (disposed) return;
+      if (event.data.status === "fallback") {
+        fallback();
+        return;
+      }
+      for (const node of event.data.positions)
         positions.set(node.id, { x: node.x, y: node.y });
+      previousPositions.current = new Map(positions);
       canvas.dataset.layout = "ready";
+      state.current.onLayoutStatus("ready");
+      worker.terminate();
       fit();
       if (state.current.selected !== null)
         api.current.focus(state.current.selected);
     };
-    worker.onerror = () => {
-      canvas.dataset.layout = "fallback";
-    };
+    worker.onerror = fallback;
     worker.postMessage({
       nodes: nodes.map((n) => ({ id: n.id, count: props.counts[n.id] || 0 })),
       edges: props.data.edges,
+      engine: props.engine,
+      spacing: props.spacing,
     });
     void document.fonts.ready.then(invalidateFrame);
 
@@ -476,7 +500,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.removeEventListener("wheel", wheel);
       invalidate.current = () => {};
     };
-  }, [props.data, props.counts]);
+  }, [props.data, props.counts, props.engine, props.spacing]);
 
   return (
     <canvas
