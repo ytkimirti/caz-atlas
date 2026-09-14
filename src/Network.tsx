@@ -868,17 +868,16 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         for (const e of edges) line(e);
         ctx.stroke();
       }
-      const backgroundAlpha = spatial && focus !== null ? 0.6 : 1;
-      ctx.globalAlpha = backgroundAlpha;
+      ctx.globalAlpha = 1;
       ctx.beginPath();
-      ctx.strokeStyle = focus === null ? "#b8b9b050" : "#b8b9b025";
+      ctx.strokeStyle = "#b8b9b050";
       ctx.lineWidth = 0.7;
       for (const { edge, alpha } of animatedEdges.values())
         if (alpha === 1) line(edge);
       ctx.stroke();
       for (const { edge, alpha } of animatedEdges.values()) {
         if (alpha === 1 || alpha === 0) continue;
-        ctx.globalAlpha = alpha * backgroundAlpha;
+        ctx.globalAlpha = alpha;
         ctx.beginPath();
         line(edge);
         ctx.stroke();
@@ -938,11 +937,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             ? emphasized.has(node.id)
               ? 1
               : 0.65 + 0.35 * (projection.depth / projectionRadius)
-            : 1) *
-          (focus !== null &&
-          !emphasized.has(node.id) &&
-          !highlighted.has(node.id)
-            ? 0.65
             : 1);
         const p = point(node.id),
           r = markerRadius(node.id) * (0.5 + alpha * 0.5);
