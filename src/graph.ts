@@ -1,7 +1,7 @@
 import type { Atlas, Edge, Musician } from "./types";
 
 // Weight is the number of distinct concerts shared by the two musicians.
-// Keep the full graph separately for hover and shortest paths.
+// Keep the full graph separately for selection and shortest paths.
 export function topCollaboratorEdges(
   edges: Edge[],
   limit: number | null,

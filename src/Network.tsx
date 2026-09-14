@@ -485,7 +485,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
-      const focus = s.hovered ?? s.selected;
+      const focus = s.selected;
       const connected = new Set(
         focus === null
           ? []
@@ -540,7 +540,17 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         const focusEdges = (neighbors.get(focus) || []).map((n) =>
           edgesByKey.get(edgeKey(focus, n.id))!,
         );
-        lines(focusEdges, "#28644dd9", 1.8);
+        const maxWeight = Math.max(1, ...focusEdges.map((edge) => edge.weight));
+        // Scale shared concert counts without letting a frequent tie dominate.
+        // Paint stronger ties last so they remain clear at crossings.
+        for (const edge of focusEdges.sort((a, b) => a.weight - b.weight)) {
+          const strength = Math.sqrt(edge.weight / maxWeight);
+          lines(
+            [edge],
+            `rgba(40, 100, 77, ${0.25 + 0.7 * strength})`,
+            0.7 + 3.3 * strength,
+          );
+        }
       }
       if (routeEdges.size)
         lines(
@@ -603,7 +613,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ctx.globalAlpha = 1;
       const occupied: { x: number; y: number; w: number; h: number }[] = [];
       // Give the active people first choice of space, then their strongest ties.
-      // Hovering a hub must share the same finite budget as every other view.
+      // Selecting a hub must share the same finite budget as every other view.
       const collaborators =
         focus === null
           ? []
@@ -618,7 +628,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ...(s.selected === null ? [] : [s.selected]),
         ...s.path,
         ...collaborators.map((n) => n.id),
-        ...(focus === null && s.labels
+        ...(focus === null && s.hovered === null && s.labels
           ? ranked
               .filter((node) => !s.instrument || highlighted.has(node.id))
               .map((node) => node.id)
