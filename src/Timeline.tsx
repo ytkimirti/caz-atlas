@@ -4,12 +4,15 @@ import { ArrowUpRight, Pause, Play, RotateCcw } from "lucide-react";
 import { monthLabel, monthValue, parseMonth } from "./chronology";
 import type { DateRange } from "./chronology";
 import { number } from "./types";
+import { playbackStep } from "./playback";
+import type { ArrivalSchedule } from "./playback";
 
 interface Props {
   bounds: DateRange;
   range: DateRange;
   cursor: number;
   replayFrom: number;
+  arrivals: ArrivalSchedule;
   histogram: number[];
   musicians: number;
   edges: number;
@@ -58,6 +61,7 @@ export default function Timeline({
   range,
   cursor,
   replayFrom,
+  arrivals,
   histogram,
   musicians,
   edges,
@@ -79,7 +83,7 @@ export default function Timeline({
   const span = Math.max(1, bounds[1] - bounds[0]);
   const percent = (month: number) => ((month - bounds[0]) / span) * 100;
   const max = Math.max(1, ...histogram);
-  const step = Math.max(1, Math.round((range[1] - range[0]) / 100));
+  const step = playbackStep(cursor, range[1], arrivals, speed);
   useEffect(() => {
     if (!playing) return;
     if (cursor >= range[1]) {
@@ -87,12 +91,18 @@ export default function Timeline({
       return;
     }
     if (calculating) return;
-    const timer = window.setTimeout(
-      () => onCursor(Math.min(range[1], cursor + step)),
-      300 / speed,
-    );
+    const timer = window.setTimeout(() => onCursor(step.cursor), step.delay);
     return () => window.clearTimeout(timer);
-  }, [playing, cursor, range, speed, step, onCursor, calculating, setPlaying]);
+  }, [
+    playing,
+    cursor,
+    range,
+    step.cursor,
+    step.delay,
+    onCursor,
+    calculating,
+    setPlaying,
+  ]);
   useEffect(() => {
     const pause = () => {
       if (document.hidden) setPlaying(false);
@@ -155,7 +165,7 @@ export default function Timeline({
     <section
       className={`timeline ${playing ? "is-playing" : ""}`}
       aria-label="Zaman çizelgesi"
-      style={{ "--play-duration": `${300 / speed}ms` } as CSSProperties}
+      style={{ "--play-duration": `${step.delay}ms` } as CSSProperties}
     >
       <div className="timeline-heading">
         <span className="section-caption">ZAMAN İÇİNDE KEŞFET</span>
@@ -197,7 +207,7 @@ export default function Timeline({
           <button
             className="timeline-speed"
             aria-label="Oynatma hızı"
-            title="Oynatma hızını değiştir"
+            title="Müzisyen yoğunluğuna göre ayarlanan oynatma hızını değiştir"
             onClick={() => setSpeed(speed === 4 ? 0.5 : speed * 2)}
           >
             {speed}×

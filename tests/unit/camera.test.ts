@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { frameNeighborhood, orbitRadius } from "../../src/camera";
+import {
+  expandPlaybackView,
+  frameNeighborhood,
+  orbitRadius,
+} from "../../src/camera";
 import { project3D, sceneBounds } from "../../src/projection";
 
 const points = [
@@ -8,6 +12,31 @@ const points = [
   { x: -100, y: -350, z: -200 },
 ];
 const viewport = { left: 290, top: 150, right: 1140, bottom: 800 };
+
+test("playback ignores small fluctuations and never zooms in on contraction", () => {
+  const frame = { left: 0, top: 0, right: 1000, bottom: 800 };
+  const view = { zoom: 1, x: 500, y: 400 };
+  expect(expandPlaybackView(view, [{ x: 520, y: 0 }], frame)).toBeNull();
+  const expanded = expandPlaybackView(view, [{ x: 750, y: 0 }], frame)!;
+  expect(expanded.zoom).toBeLessThan(view.zoom);
+  expect(expanded.x).toBe(500);
+  expect(expanded.y).toBe(400);
+  expect(expandPlaybackView(expanded, [{ x: 50, y: 0 }], frame)).toBeNull();
+  expect(expandPlaybackView(expanded, [{ x: 750, y: 0 }], frame)).toBeNull();
+});
+
+test("playback expansion preserves the world point at the viewport center", () => {
+  const view = { zoom: 0.8, x: 200, y: 100 };
+  const expanded = expandPlaybackView(view, [{ x: 2200, y: -1200 }], viewport)!;
+  const centerX = (viewport.left + viewport.right) / 2;
+  const centerY = (viewport.top + viewport.bottom) / 2;
+  expect((centerX - expanded.x) / expanded.zoom).toBeCloseTo(
+    (centerX - view.x) / view.zoom,
+  );
+  expect((centerY - expanded.y) / expanded.zoom).toBeCloseTo(
+    (centerY - view.y) / view.zoom,
+  );
+});
 
 test("focus frames asymmetric collaborators around the selected musician outside panels", () => {
   const pivot = points[0];

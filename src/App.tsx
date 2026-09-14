@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Network from "./Network";
 import Timeline from "./Timeline";
+import { playbackArrivals } from "./playback";
 import { useSettingsPanel } from "./useSettingsPanel";
 import {
   concertHistogram,
@@ -396,6 +397,10 @@ function AtlasApp({
   );
   const replayFrom = useMemo(
     () => firstPlaybackMonth(concerts.timeline, range, minConcerts, venueId),
+    [concerts, range, minConcerts, venueId],
+  );
+  const arrivals = useMemo(
+    () => playbackArrivals(concerts.timeline, range, minConcerts, venueId),
     [concerts, range, minConcerts, venueId],
   );
   const allDates = range[0] === bounds[0] && cursor === bounds[1];
@@ -1412,6 +1417,7 @@ function AtlasApp({
         range={range}
         cursor={cursor}
         replayFrom={replayFrom}
+        arrivals={arrivals}
         histogram={histogram}
         musicians={graph.nodes.length}
         edges={edges.length}

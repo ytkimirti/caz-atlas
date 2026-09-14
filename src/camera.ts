@@ -8,6 +8,35 @@ export interface Viewport {
   bottom: number;
 }
 
+// Playback only widens the lens when a node leaves the safe frame. The world
+// point at the center stays fixed, so contraction cannot make the camera bob.
+export function expandPlaybackView(
+  view: { zoom: number; x: number; y: number },
+  points: Iterable<{ x: number; y: number }>,
+  viewport: Viewport,
+) {
+  const centerX = (viewport.left + viewport.right) / 2;
+  const centerY = (viewport.top + viewport.bottom) / 2;
+  const halfWidth = Math.max(30, (viewport.right - viewport.left) / 2);
+  const halfHeight = Math.max(30, (viewport.bottom - viewport.top) / 2);
+  let extent = 1;
+  for (const p of points) {
+    extent = Math.max(
+      extent,
+      Math.abs(p.x * view.zoom + view.x - centerX) / halfWidth,
+      Math.abs(p.y * view.zoom + view.y - centerY) / halfHeight,
+    );
+  }
+  if (extent <= 1.08) return null;
+  const zoom = Math.max(0.025, view.zoom / (extent * 1.18));
+  if (zoom === view.zoom) return null;
+  return {
+    zoom,
+    x: centerX - ((centerX - view.x) * zoom) / view.zoom,
+    y: centerY - ((centerY - view.y) * zoom) / view.zoom,
+  };
+}
+
 export function orbitRadius(
   scene: { center: Point3D; radius: number },
   pivot: Point3D,

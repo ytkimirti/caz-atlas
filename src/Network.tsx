@@ -8,7 +8,7 @@ import {
 import type { GraphData, Edge, Ensemble } from "./types";
 import type { LayoutEngine, LayoutStatus, ViewMode } from "./layout-options";
 import type { LayoutResponse } from "./layout";
-import { frameNeighborhood, orbitRadius } from "./camera";
+import { expandPlaybackView, frameNeighborhood, orbitRadius } from "./camera";
 import { project3D, sceneBounds } from "./projection";
 import type { Point3D } from "./projection";
 import { groupInfo } from "./types";
@@ -133,10 +133,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     const spatial = props.mode === "3d";
     let physics: LivePhysicsClient | null = null;
     let physicsData = props.data;
+    let positionedData: Props["data"] | null = null;
     const births = new Map<number, number>();
     let physicsRunning = false;
     let autoFrame = props.livePhysics;
-    let lastFit = 0;
     let scene = sceneBounds(positions.values());
     let pivot: Point3D = { ...scene.center };
     let projectionRadius = scene.radius;
@@ -147,7 +147,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       pitch = -0.2;
     const projected = new Map<number, ReturnType<typeof project3D>>();
     function updateProjection() {
-      projectionRadius = orbitRadius(scene, pivot);
+      const nextRadius = orbitRadius(scene, pivot);
+      projectionRadius = props.livePhysics
+        ? Math.max(projectionRadius, nextRadius)
+        : nextRadius;
       projected.clear();
       for (const [id, p] of positions)
         projected.set(
@@ -182,7 +185,12 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       disposed = false;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     type View = { zoom: number; x: number; y: number; pivot: Point3D };
-    let camera: { from: View; to: View; start: number } | null = null;
+    let camera: {
+      from: View;
+      to: View;
+      start: number;
+      duration: number;
+    } | null = null;
     let hoverId: number | null = null;
     const pointers = new Map<number, { x: number; y: number }>();
     let startX = 0,
@@ -224,6 +232,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function moveView(
       target: Omit<View, "pivot"> & { pivot?: Point3D },
       animate: boolean,
+      duration = spatial ? 380 : 160,
     ) {
       const to = { ...target, pivot: target.pivot ?? { ...pivot } };
       yawVelocity = pitchVelocity = 0;
@@ -237,6 +246,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           from: { zoom, x: panX, y: panY, pivot: { ...pivot } },
           to,
           start: performance.now(),
+          duration,
         };
       } else {
         camera = null;
@@ -806,6 +816,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           props.spacing,
           (added) => {
             if (disposed) return;
+            positionedData = physicsData;
             if (!motion.matches && state.current.playing)
               for (const id of added) births.set(id, performance.now());
             scene = sceneBounds(positions.values());
@@ -846,12 +857,17 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         physics.advance(physicsRunning ? now - lastFrame : 1000 / 60);
         if (
           autoFrame &&
+          positionedData === s.data &&
           !pointers.size &&
           s.selected === null &&
-          now - lastFit > 500
+          !camera
         ) {
-          fit(!motion.matches);
-          lastFit = now;
+          const expanded = expandPlaybackView(
+            { zoom, x: panX, y: panY },
+            s.data.nodes.map((n) => projected.get(n.id)!),
+            focusViewport(),
+          );
+          if (expanded) moveView(expanded, !motion.matches, 1400);
         }
         invalidateFrame();
       }
@@ -905,7 +921,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       if (camera) {
         const progress = reducedMotion.matches
           ? 1
-          : Math.min(1, (now - camera.start) / (spatial ? 380 : 160));
+          : Math.max(0, Math.min(1, (now - camera.start) / camera.duration));
         const eased = 1 - (1 - progress) ** 3;
         zoom = camera.from.zoom + (camera.to.zoom - camera.from.zoom) * eased;
         panX = camera.from.x + (camera.to.x - camera.from.x) * eased;

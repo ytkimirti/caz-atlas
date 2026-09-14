@@ -51,7 +51,7 @@ try {
     await expect(cursor).toHaveValue(date);
     const ticks = Number(await canvas.getAttribute("data-physics-ticks"));
     const workers = await page.locator("html").getAttribute("data-workers");
-    await expect(cursor).not.toHaveValue(date);
+    await expect(cursor).not.toHaveValue(date, { timeout: 12000 });
     expect(
       Number(await canvas.getAttribute("data-physics-ticks")),
     ).toBeGreaterThan(ticks);
@@ -81,6 +81,26 @@ try {
     expect(
       Number(await canvas.getAttribute("data-physics-ticks")),
     ).toBeGreaterThan(Number(pausedTicks));
+    const zooms = await page.evaluate(
+      () =>
+        new Promise<number[]>((resolve) => {
+          const values: number[] = [];
+          const start = performance.now();
+          function sample(now: number) {
+            values.push(
+              Number(
+                document.querySelector<HTMLCanvasElement>("canvas")!.dataset
+                  .zoom,
+              ),
+            );
+            if (now - start < 1800) requestAnimationFrame(sample);
+            else resolve(values);
+          }
+          requestAnimationFrame(sample);
+        }),
+    );
+    for (let i = 1; i < zooms.length; i++)
+      expect(zooms[i]).toBeLessThanOrEqual(zooms[i - 1] + 1e-6);
     await page
       .getByRole("button", { name: "Yakınlaştır", exact: true })
       .click();
@@ -131,7 +151,7 @@ try {
     .click();
   await expect(canvas).toHaveAttribute("data-physics", "running");
   await expect(canvas).toHaveAttribute("data-physics", "paused", {
-    timeout: 5000,
+    timeout: 20000,
   });
   await expect(
     page.getByLabel("Gösterilen tarih", { exact: true }),
