@@ -15,7 +15,7 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 ## Kullanım
 
 - Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca arşivdeki tüm isimler görünür.
-- Genel görünümde her iki müzisyenin de en güçlü iki bağı arasında bulunan ilişkiler çizilir. Filtrelerden sınır 1, 2, 3 veya 5 yapılabilir. Böylece tek bir kişi bütün grafı çizgilerle kaplamaz.
+- Genel görünümde **en az 5 farklı konserde birlikte çalan** müzisyenlerin bağları çizilir. Ortak konser eşiği 1, 2, 5 veya 10 seçilebilir; 1 tüm bağları gösterir. Kişi başına bağ sınırı yoktur. Mekan seçiliyken yalnızca o mekandaki ortak konserler sayılır. Eşik URL’de `shared` parametresinde saklanır.
 - Bir müzisyenin üzerine gelince filtrelenmiş graf içindeki tüm doğrudan bağları görünür. Tıklayınca seçim sabitlenir.
 - Biri seçiliyken başka bir müzisyenin üzerine gelmek aralarındaki **en az bağlantılı yolu** vurgular. Bu hesap, normalde gizlenen zayıf bağları da içerir. Yol mevcut filtrelere uyar.
 - Arama sonuçlarında ve seçili kişinin bağlantı listesinde hover veya klavye odağı da yol gösterir. Türkçe karakter kullanmadan arama yapılabilir.
@@ -77,7 +77,7 @@ bun run build
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
 ```
 
-Birim testleri; bağ seyrekleştirmeyi, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
+Birim testleri; ortak konser eşiğini, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
 
 UI testi yalnızca yerel sunucuda, kurulu Chrome ile çalışır. Canvas hover, seçiliyken hover yolu, filtreler, URL'den geri yükleme, mobil overlay'ler, klavye kullanımı ve veri yükleme hatasından dönüşü doğrular. Ekran görüntüleri `.cache/minimal-*.png` altında tutulur.
 

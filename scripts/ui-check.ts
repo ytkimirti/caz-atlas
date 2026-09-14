@@ -58,7 +58,42 @@ try {
   );
   const visibleEdges = Number(await canvas.getAttribute("data-visible-edges"));
   expect(visibleEdges).toBeGreaterThan(0);
-  expect(visibleEdges).toBeLessThan(defaultGraph.edges.length / 10);
+  expect(visibleEdges).toBe(
+    defaultGraph.edges.filter((e) => e.weight >= 5).length,
+  );
+  await expect(page.locator(".active-filters")).toContainText(
+    "En az 5 ortak konser",
+  );
+  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
+  await page
+    .getByRole("button", { name: "En az 10 ortak konser", exact: true })
+    .click();
+  await expect(canvas).toHaveAttribute(
+    "data-visible-edges",
+    String(defaultGraph.edges.filter((e) => e.weight >= 10).length),
+  );
+  await expect(page).toHaveURL(/shared=10/);
+  await page.reload();
+  await ready();
+  await expect(page.locator(".active-filters")).toContainText(
+    "En az 10 ortak konser",
+  );
+  await expect(canvas).toHaveAttribute(
+    "data-visible-edges",
+    String(defaultGraph.edges.filter((e) => e.weight >= 10).length),
+  );
+  await page
+    .getByRole("button", { name: "Ortak konser filtresini kaldır" })
+    .click();
+  await expect(canvas).toHaveAttribute(
+    "data-visible-edges",
+    String(defaultGraph.edges.length),
+  );
+  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
+  await page
+    .getByRole("button", { name: "En az 5 ortak konser", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Filtreleri kapat" }).click();
 
   // Zoom buttons accumulate rapid clicks, ease briefly, then stop rendering.
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -169,6 +204,10 @@ try {
   );
   await expect(page.locator(".filter-footer")).toContainText(
     venueGraph.nodes.length.toLocaleString("tr-TR"),
+  );
+  await expect(canvas).toHaveAttribute(
+    "data-visible-edges",
+    String(venueGraph.edges.filter((e) => e.weight >= 5).length),
   );
   await expect(page).toHaveURL(/venue=NardisJazzClub/);
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
@@ -294,7 +333,7 @@ try {
   await recovery.close();
   expect(errors).toEqual([]);
   console.log(
-    "UI verified: full-screen light canvas, sparse links, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
+    "UI verified: full-screen light canvas, shared-concert thresholds and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
   );
 } finally {
   await browser.close();

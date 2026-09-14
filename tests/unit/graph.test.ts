@@ -4,7 +4,7 @@ import {
   shortestPath,
   mergeEdge,
   filterGraph,
-  strongestEdges,
+  edgesBySharedConcerts,
 } from "../../src/graph";
 import type { Atlas, Edge } from "../../src/types";
 import { normalize } from "../../src/types";
@@ -41,22 +41,43 @@ describe("Musician graph", () => {
     expect(normalize("İlhan Şen")).toBe(normalize("ilhan sen"));
     expect(normalize("Önder Focan")).toBe(normalize("onder focan"));
   });
-  test("mutual strongest links never produce a hub above the chosen limit", () => {
+  test("shared concert threshold includes the boundary and all qualifying hub ties", () => {
     const edges = [2, 3, 4, 5].map((id) => ({
       source: 1,
       target: id,
       weight: 10 - id,
     }));
-    expect(strongestEdges(edges, 2)).toEqual(edges.slice(0, 2));
-    expect(strongestEdges(edges, 0)).toEqual([]);
-    const full = adjacency({ nodes: fixture.nodes, edges });
-    expect(shortestPath(full, 4, 5)).toEqual([4, 1, 5]);
+    // A musician's other, stronger ties must not hide this five-concert tie.
+    expect(edgesBySharedConcerts(edges, 5)).toEqual(edges);
+    expect(edgesBySharedConcerts(edges, 6)).toEqual(edges.slice(0, 3));
+    expect(edgesBySharedConcerts(edges, 9)).toEqual([]);
+    expect(edgesBySharedConcerts([], 1)).toEqual([]);
+    expect(edgesBySharedConcerts(fixture.edges, 1)).toEqual(fixture.edges);
   });
-  test("ties have stable output independent of input order", () => {
-    const edges = fixture.edges.map((e) => ({ ...e, weight: 1 }));
-    expect(strongestEdges(edges, 1)).toEqual(
-      strongestEdges([...edges].reverse(), 1),
+  test("hidden single-concert ties remain available for hover and shortest paths", () => {
+    expect(edgesBySharedConcerts(fixture.edges, 2)).not.toContainEqual({
+      source: 1,
+      target: 4,
+      weight: 1,
+    });
+    const full = adjacency(fixture);
+    expect(full.get(1)).toContainEqual({ id: 4, weight: 1 });
+    expect(shortestPath(full, 1, 4)).toEqual([1, 4]);
+  });
+  test("shared concert threshold uses the selected venue's counts", () => {
+    const venueGraph = filterGraph(
+      { ...fixture, edges: [{ source: 1, target: 2, weight: 1 }] },
+      { 1: 20, 2: 20 },
+      10,
+      "",
+      { 1: 20, 2: 20 },
     );
+    expect(edgesBySharedConcerts(fixture.edges, 3)).toContainEqual({
+      source: 1,
+      target: 2,
+      weight: 3,
+    });
+    expect(edgesBySharedConcerts(venueGraph.edges, 3)).toEqual([]);
   });
   test("concert threshold is strict and filters remove dangling edges", () => {
     const filtered = filterGraph(
