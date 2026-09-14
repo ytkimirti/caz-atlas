@@ -44,6 +44,14 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previousPositions = useRef(new Map<number, { x: number; y: number }>());
   const neighbors = useMemo(() => adjacency(props.data), [props.data]);
+  const connectionStrengths = useMemo(() => {
+    const ties =
+      props.selected === null ? [] : (neighbors.get(props.selected) ?? []);
+    const maxWeight = ties.reduce((max, tie) => Math.max(max, tie.weight), 1);
+    return new Map(
+      ties.map((tie) => [tie.id, Math.sqrt(tie.weight / maxWeight)]),
+    );
+  }, [neighbors, props.selected]);
   const edgesByKey = useMemo(
     () =>
       new Map(props.data.edges.map((e) => [edgeKey(e.source, e.target), e])),
@@ -58,7 +66,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ),
     [props.ensembles, props.ensembleEdges, props.data],
   );
-  const derived = { ...props, neighbors, edgesByKey, clusters };
+  const derived = {
+    ...props,
+    neighbors,
+    connectionStrengths,
+    edgesByKey,
+    clusters,
+  };
   const state = useRef(derived);
   state.current = derived;
   const api = useRef<NetworkHandle>({
@@ -149,6 +163,17 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             Math.sqrt(zoom),
         ),
       );
+    }
+    function markerRadius(id: number) {
+      const s = state.current;
+      if (id === s.selected) return Math.max(8, radius(id) + 2);
+      const strength = s.connectionStrengths.get(id);
+      if (strength !== undefined)
+        return (
+          (3 + 5 * strength) * Math.max(0.75, Math.min(1.25, Math.sqrt(zoom)))
+        );
+      if (s.path.includes(id)) return Math.max(4.5, radius(id) + 2);
+      return radius(id);
     }
     function invalidateFrame() {
       if (!frame && !disposed) frame = requestAnimationFrame(draw);
@@ -341,7 +366,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       for (const n of state.current.data.nodes) {
         const p = point(n.id),
           distance = Math.hypot(p.x - x, p.y - y);
-        if (distance <= Math.max(7, radius(n.id) + 3) && distance < nearest) {
+        if (
+          distance <= Math.max(7, markerRadius(n.id) + 3) &&
+          distance < nearest
+        ) {
           nearest = distance;
           id = n.id;
         }
@@ -540,11 +568,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         const focusEdges = (neighbors.get(focus) || []).map((n) =>
           edgesByKey.get(edgeKey(focus, n.id))!,
         );
-        const maxWeight = Math.max(1, ...focusEdges.map((edge) => edge.weight));
         // Scale shared concert counts without letting a frequent tie dominate.
         // Paint stronger ties last so they remain clear at crossings.
         for (const edge of focusEdges.sort((a, b) => a.weight - b.weight)) {
-          const strength = Math.sqrt(edge.weight / maxWeight);
+          const other = edge.source === focus ? edge.target : edge.source;
+          const strength = s.connectionStrengths.get(other)!;
           lines(
             [edge],
             `rgba(40, 100, 77, ${0.25 + 0.7 * strength})`,
@@ -562,24 +590,37 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const drawOrder = [
         ...nodes.filter((n) => !emphasized.has(n.id) && !highlighted.has(n.id)),
         ...nodes.filter((n) => highlighted.has(n.id) && !emphasized.has(n.id)),
-        ...nodes.filter((n) => emphasized.has(n.id)),
+        ...nodes
+          .filter((n) => emphasized.has(n.id))
+          .sort((a, b) => {
+            const priority = (id: number) =>
+              id === s.selected
+                ? 3
+                : routeNodes.has(id)
+                  ? 2
+                  : (s.connectionStrengths.get(id) ?? 0);
+            return priority(a.id) - priority(b.id);
+          }),
       ];
       for (const node of drawOrder) {
         const alpha = opacity.get(node.id) || 0;
         if (!alpha) continue;
         ctx.globalAlpha = alpha;
         const p = point(node.id),
-          r =
-            (emphasized.has(node.id)
-              ? Math.max(4.5, radius(node.id) + 2)
-              : radius(node.id)) *
-            (0.5 + alpha * 0.5);
+          r = markerRadius(node.id) * (0.5 + alpha * 0.5);
+        const strength = s.connectionStrengths.get(node.id);
         if (p.x < -20 || p.y < -20 || p.x > width + 20 || p.y > height + 20)
           continue;
         const special = node.id === s.selected || node.id === s.hovered;
         if (emphasized.has(node.id)) {
           ctx.beginPath();
-          ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2);
+          ctx.arc(
+            p.x,
+            p.y,
+            r + (strength === undefined ? 2.5 : 1 + 1.5 * strength),
+            0,
+            Math.PI * 2,
+          );
           ctx.fillStyle = "#fafaf6";
           ctx.fill();
         }
@@ -588,9 +629,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.fillStyle =
           routeNodes.has(node.id) && s.path.length > 1
             ? "#b64e31"
-            : emphasized.has(node.id)
-              ? "#28644d"
-              : groupInfo(node.group).color;
+            : strength !== undefined
+              ? `rgba(40, 100, 77, ${0.35 + 0.65 * strength})`
+              : emphasized.has(node.id)
+                ? "#28644d"
+                : groupInfo(node.group).color;
         ctx.fill();
         if (highlighted.has(node.id)) {
           ctx.beginPath();
@@ -650,7 +693,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         if (!n) continue;
         const special = emphasized.has(id);
         const p = point(id),
-          r = special ? Math.max(4.5, radius(id) + 2) : radius(id);
+          r = markerRadius(id);
         if (p.x < 16 || p.x > width - 16 || p.y < 60 || p.y > height - 55)
           continue;
         ctx.globalAlpha = opacity.get(id) || 0;
@@ -725,7 +768,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         const labeledMembers = new Set<number>();
         const markerBounds = s.data.nodes.map((node) => {
           const p = point(node.id);
-          const r = radius(node.id) + 6;
+          const r = markerRadius(node.id) + 7;
           return { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2 };
         });
         for (const { ensemble, members } of clusters) {
