@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowUpRight,
   Network as NetworkIcon,
   ChevronDown,
-  LocateFixed,
-  Minus,
-  Plus,
   Search,
   SlidersHorizontal,
   X,
@@ -894,49 +890,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               {number(neighbors.get(hovered!)?.length ?? 0)} bağ
             </span>
           </div>
-        ) : (
-          <p className="interaction-hint">
-            {selected !== null
-              ? "En kısa yol için başka bir müzisyenin üzerine gel."
-              : "Üzerine gel: bağlantılar · Tıkla: seç · Kaydır: yakınlaş"}
-          </p>
-        )}
-      </div>
-      <div className="graph-footer">
-        <span>
-          {number(graph.nodes.length)} müzisyen <b>·</b> {number(edges.length)}{" "}
-          bağ
-        </span>
-        <a href="https://bizimcaz.com" target="_blank" rel="noreferrer">
-          Bizim Caz <ArrowUpRight size={10} />
-        </a>
-      </div>
-      <div className="zoom-controls surface" aria-label="Graf görünümü">
-        <button
-          className="icon-button"
-          aria-label="Uzaklaştır"
-          title="Uzaklaştır (-)"
-          onClick={() => network.current?.zoom(1 / 1.3)}
-        >
-          <Minus size={17} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label="Yakınlaştır"
-          title="Yakınlaştır (+)"
-          onClick={() => network.current?.zoom(1.3)}
-        >
-          <Plus size={17} />
-        </button>
-        <span />
-        <button
-          className="icon-button"
-          aria-label="Grafı ekrana sığdır"
-          title="Ekrana sığdır (0)"
-          onClick={() => network.current?.fit()}
-        >
-          <LocateFixed size={17} />
-        </button>
+        ) : null}
       </div>
     </main>
   );

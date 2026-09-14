@@ -58,7 +58,7 @@ try {
   await page.reload();
   await expect(canvas).toHaveAttribute("data-layout", "fallback");
   await expect(page.getByRole("status")).toContainText("Arşiv konumları");
-  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
+  await page.keyboard.press("+");
   expect(errors).toEqual([]);
   console.log(
     "Layout checks passed: engines, full archive, cancellation, URL restore, invalid settings, worker fallback.",
