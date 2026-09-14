@@ -185,6 +185,10 @@ input[type="checkbox"] {
   color: var(--muted);
 }
 .filter-toggle {
+  position: absolute;
+  top: 90px;
+  left: 28px;
+  z-index: 5;
   height: 44px;
   display: flex;
   align-items: center;
@@ -249,12 +253,12 @@ input[type="checkbox"] {
 }
 .active-filters {
   position: absolute;
-  top: 90px;
-  left: 28px;
+  top: 97px;
+  left: 150px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-width: calc(100% - 400px);
+  max-width: calc(100% - 480px);
 }
 .active-filters button {
   font-size: 12px;
@@ -270,9 +274,9 @@ input[type="checkbox"] {
 .filter-panel {
   position: absolute;
   left: 28px;
-  top: 132px;
+  top: 144px;
   width: 300px;
-  max-height: calc(100dvh - 195px);
+  max-height: calc(100dvh - 207px);
   overflow-y: auto;
   z-index: 4;
   padding: 18px;
@@ -667,15 +671,19 @@ input[type="checkbox"] {
 @media (min-width: 1500px) {
   .filter-panel {
     left: 36px;
-    top: 140px;
+    top: 151px;
   }
   .identity {
     top: 30px;
     left: 36px;
   }
-  .active-filters {
+  .filter-toggle {
     left: 36px;
     top: 97px;
+  }
+  .active-filters {
+    left: 158px;
+    top: 104px;
   }
   .top-controls {
     right: 32px;
@@ -705,7 +713,7 @@ input[type="checkbox"] {
   }
   .top-controls {
     top: 62px;
-    left: 16px;
+    left: 68px;
     right: 16px;
     gap: 7px;
   }
@@ -720,6 +728,9 @@ input[type="checkbox"] {
     display: none;
   }
   .filter-toggle {
+    top: 62px;
+    left: 16px;
+    width: 44px;
     height: 44px;
     padding: 0 12px;
   }
@@ -727,7 +738,7 @@ input[type="checkbox"] {
     display: none;
   }
   .search-results {
-    left: 0;
+    left: -52px;
     right: auto;
     width: calc(100vw - 32px);
     max-height: 310px;
@@ -818,7 +829,7 @@ input[type="checkbox"] {
   .empty-state {
     top: 46%;
   }
-  .top-controls .filter-dot {
+  .filter-toggle .filter-dot {
     position: absolute;
     right: 8px;
     top: 8px;

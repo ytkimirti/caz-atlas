@@ -1,7 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import type { Atlas, ConcertIndex } from "../src/types";
-import { adjacency, shortestPath, filterGraph } from "../src/graph";
+import {
+  adjacency,
+  shortestPath,
+  filterGraph,
+  topCollaboratorEdges,
+} from "../src/graph";
 const base = process.env.ATLAS_TEST_URL || "http://localhost:18837";
 if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw new Error("UI checks must target a local development server.");
@@ -76,40 +81,55 @@ try {
   );
   const visibleEdges = Number(await canvas.getAttribute("data-visible-edges"));
   expect(visibleEdges).toBeGreaterThan(0);
-  expect(visibleEdges).toBe(
-    defaultGraph.edges.filter((e) => e.weight >= 5).length,
-  );
+  expect(visibleEdges).toBe(topCollaboratorEdges(defaultGraph.edges, 5).length);
   await expect(page.locator(".active-filters")).toContainText(
-    "En az 5 ortak konser",
+    "Kişi başına ilk 5 bağlantı",
   );
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
   await page
-    .getByRole("button", { name: "En az 10 ortak konser", exact: true })
+    .getByRole("button", { name: "Kişi başına ilk 10 bağlantı", exact: true })
     .click();
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
-    String(defaultGraph.edges.filter((e) => e.weight >= 10).length),
+    String(topCollaboratorEdges(defaultGraph.edges, 10).length),
   );
-  await expect(page).toHaveURL(/shared=10/);
+  await expect(page).toHaveURL(/top=10/);
   await page.reload();
   await ready();
   await expect(page.locator(".active-filters")).toContainText(
-    "En az 10 ortak konser",
+    "Kişi başına ilk 10 bağlantı",
   );
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
-    String(defaultGraph.edges.filter((e) => e.weight >= 10).length),
+    String(topCollaboratorEdges(defaultGraph.edges, 10).length),
   );
-  await page
-    .getByRole("button", { name: "Ortak konser filtresini kaldır" })
-    .click();
+  await page.getByRole("button", { name: "Bağlantı sınırını kaldır" }).click();
+  await expect(canvas).toHaveAttribute(
+    "data-visible-edges",
+    String(defaultGraph.edges.length),
+  );
+  await expect(page).toHaveURL(/top=all/);
+  await page.reload();
+  await ready();
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
     String(defaultGraph.edges.length),
   );
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
+  for (const limit of [1, 3]) {
+    await page
+      .getByRole("button", {
+        name: `Kişi başına ilk ${limit} bağlantı`,
+        exact: true,
+      })
+      .click();
+    await expect(canvas).toHaveAttribute(
+      "data-visible-edges",
+      String(topCollaboratorEdges(defaultGraph.edges, limit).length),
+    );
+  }
   await page
-    .getByRole("button", { name: "En az 5 ortak konser", exact: true })
+    .getByRole("button", { name: "Kişi başına ilk 5 bağlantı", exact: true })
     .click();
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
 
@@ -263,7 +283,7 @@ try {
   );
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
-    String(venueGraph.edges.filter((e) => e.weight >= 5).length),
+    String(topCollaboratorEdges(venueGraph.edges, 5).length),
   );
   await expect(page).toHaveURL(/venue=NardisJazzClub/);
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
@@ -391,7 +411,7 @@ try {
   await recovery.close();
   expect(errors).toEqual([]);
   console.log(
-    "UI verified: full-screen light canvas, shared-concert thresholds and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
+    "UI verified: full-screen light canvas, top collaborators and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
   );
 } finally {
   await browser.close();

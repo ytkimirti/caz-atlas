@@ -2,8 +2,34 @@ import type { Atlas, Edge, Musician } from "./types";
 
 // Weight is the number of distinct concerts shared by the two musicians.
 // Keep the full graph separately for hover and shortest paths.
-export function edgesBySharedConcerts(edges: Edge[], minimum: number): Edge[] {
-  return edges.filter((edge) => edge.weight >= minimum);
+export function topCollaboratorEdges(
+  edges: Edge[],
+  limit: number | null,
+): Edge[] {
+  if (limit === null) return edges;
+  if (!Number.isFinite(limit) || limit < 1) return [];
+  const neighbors = new Map<number, { id: number; weight: number }[]>();
+  for (const edge of edges) {
+    for (const [id, other] of [
+      [edge.source, edge.target],
+      [edge.target, edge.source],
+    ]) {
+      const items = neighbors.get(id) ?? [];
+      items.push({ id: other, weight: edge.weight });
+      neighbors.set(id, items);
+    }
+  }
+  const selected = new Set<string>();
+  for (const [id, items] of neighbors) {
+    // Break equal concert counts by musician ID so input order cannot change ties.
+    items.sort((a, b) => b.weight - a.weight || a.id - b.id);
+    for (const other of items.slice(0, Math.floor(limit)))
+      selected.add(edgeKey(id, other.id));
+  }
+  // Either musician can select the tie; popular partners may have more than X.
+  return edges.filter((edge) =>
+    selected.has(edgeKey(edge.source, edge.target)),
+  );
 }
 
 export function filterGraph(
