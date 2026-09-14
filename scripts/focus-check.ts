@@ -38,7 +38,7 @@ async function settled(page: Page) {
 }
 async function choose(page: Page, name: string) {
   await page
-    .getByRole("combobox", { name: "Müzisyen ara", exact: true })
+    .getByRole("combobox", { name: "Müzisyen veya grup ara", exact: true })
     .fill(name);
   await page.locator(".search-results [role=option]").first().click();
   await settled(page);

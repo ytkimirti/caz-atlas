@@ -135,7 +135,7 @@ try {
   await complete();
   await ready();
   const search = page.getByRole("combobox", {
-    name: "Müzisyen ara",
+    name: "Müzisyen veya grup ara",
     exact: true,
   });
   await search.fill("Asude Sasmaz");

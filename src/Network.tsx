@@ -35,6 +35,7 @@ interface Props {
   path: number[];
   labels: boolean;
   instrument: string;
+  highlightedIds: number[];
   engine: LayoutEngine;
   mode: ViewMode;
   spacing: number;
@@ -104,6 +105,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       props.path,
       props.labels,
       props.instrument,
+      props.highlightedIds,
       props.edges,
       props.data,
       props.counts,
@@ -244,9 +246,14 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         minY = Infinity,
         maxX = -Infinity,
         maxY = -Infinity;
+      const roster = new Set(state.current.highlightedIds);
+      const rosterPoints = [...positions.entries()].filter(
+        ([id]) => !roster.size || roster.has(id),
+      );
+      if (!rosterPoints.length) return;
       const points =
         spatial && targetPivot
-          ? [...positions.values()].map((p) =>
+          ? rosterPoints.map(([, p]) =>
               project3D(
                 p,
                 targetPivot,
@@ -255,17 +262,20 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
                 pitch,
               ),
             )
-          : projected.values();
+          : rosterPoints.map(([id]) => projected.get(id)!).filter(Boolean);
       for (const p of points) {
         minX = Math.min(minX, p.x);
         maxX = Math.max(maxX, p.x);
         minY = Math.min(minY, p.y);
         maxY = Math.max(maxY, p.y);
       }
-      const availableWidth = width - (width > 700 ? 120 : 42);
+      const viewport = roster.size ? focusViewport() : null;
+      const availableWidth = viewport
+        ? Math.max(48, viewport.right - viewport.left - 40)
+        : width - (width > 700 ? 120 : 42);
       // The overview uses the full canvas. Controls float above it.
-      const topInset = 32;
-      const bottomInset = 32;
+      const topInset = viewport ? viewport.top + 20 : 32;
+      const bottomInset = viewport ? height - viewport.bottom + 20 : 32;
       const availableHeight = Math.max(48, height - topInset - bottomInset);
       const nextZoom = Math.max(
         0.025,
@@ -279,7 +289,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         {
           zoom: nextZoom,
           pivot: targetPivot,
-          x: width / 2 - ((minX + maxX) / 2) * nextZoom,
+          x:
+            (viewport ? (viewport.left + viewport.right) / 2 : width / 2) -
+            ((minX + maxX) / 2) * nextZoom,
           y:
             (topInset + height - bottomInset) / 2 -
             ((minY + maxY) / 2) * nextZoom,
@@ -761,19 +773,26 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
 
     let selection = props.selected;
     let viewportKey = "";
+    let rosterKey = "";
     function draw(now: number) {
       frame = 0;
       const nextViewportKey = JSON.stringify(focusViewport());
+      const nextRosterKey = state.current.highlightedIds.join(",");
       if (
         selection !== state.current.selected ||
-        viewportKey !== nextViewportKey
+        viewportKey !== nextViewportKey ||
+        rosterKey !== nextRosterKey
       ) {
         const selectionChanged = selection !== state.current.selected;
         viewportKey = nextViewportKey;
+        rosterKey = nextRosterKey;
         selection = state.current.selected;
         if (selection !== null) {
           if (spatial) focusNeighborhood(selection);
           else revealMusician(selection);
+        } else if (rosterKey) {
+          stopMovement();
+          fit(true, scene.center);
         } else if (spatial && selectionChanged) {
           stopMovement();
           fit(true, scene.center);
@@ -875,9 +894,12 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       );
       const routeNodes = new Set(s.path),
         routeEdges = pathEdges(s.path);
+      const groupMembers = new Set(s.highlightedIds);
       const highlighted = new Set(
         s.data.nodes
-          .filter((node) => node.group === s.instrument)
+          .filter(
+            (node) => groupMembers.has(node.id) || node.group === s.instrument,
+          )
           .map((node) => node.id),
       );
       const emphasized = new Set([...connected, ...routeNodes]);
@@ -1055,7 +1077,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ...collaborators.map((n) => n.id),
         ...(focus === null && s.hovered === null && s.labels
           ? ranked
-              .filter((node) => !s.instrument || highlighted.has(node.id))
+              .filter(
+                (node) =>
+                  (!s.instrument && !groupMembers.size) ||
+                  highlighted.has(node.id),
+              )
               .map((node) => node.id)
           : []),
       ]);

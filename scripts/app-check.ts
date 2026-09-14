@@ -13,7 +13,7 @@ async function ready(page: Page) {
 }
 async function choose(page: Page, name: string) {
   await page
-    .getByRole("combobox", { name: "Müzisyen ara", exact: true })
+    .getByRole("combobox", { name: "Müzisyen veya grup ara", exact: true })
     .fill(name);
   await page.getByRole("option").first().click();
   await expect(page.locator(".selection-panel h2")).toHaveText(name);

@@ -13,8 +13,12 @@ import {
   Search,
   SlidersHorizontal,
   X,
+  Users,
 } from "lucide-react";
 import Network from "./Network";
+import MusicianPortrait from "./MusicianPortrait";
+import { searchAtlas } from "./search";
+import type { SearchKind, SearchResult } from "./search";
 import Timeline from "./Timeline";
 import { useSettingsPanel } from "./useSettingsPanel";
 import {
@@ -49,13 +53,25 @@ import {
   topCollaboratorEdges,
 } from "./graph";
 
-function MusicianSearch({
+function AtlasSearch({
   nodes,
+  ensembles,
+  onEnsembleSelect,
+  onOpen,
+  projectsReady,
+  projectError,
+  onRetry,
   onSelect,
   onHover,
   selected,
 }: {
   nodes: GraphMusician[];
+  ensembles: Ensemble[];
+  onEnsembleSelect: (id: string) => void;
+  onOpen: () => void;
+  projectsReady: boolean;
+  projectError: boolean;
+  onRetry: () => void;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
   selected: number | null;
@@ -64,15 +80,21 @@ function MusicianSearch({
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
   const wrap = useRef<HTMLDivElement>(null);
+  const [kind, setKind] = useState<SearchKind>("all");
   const results = useMemo(
-    () =>
-      nodes
-        .filter((n) =>
-          normalize(n.name + " " + n.key).includes(normalize(query)),
-        )
-        .slice(0, 7),
-    [query, nodes],
+    () => searchAtlas(nodes, ensembles, query, kind),
+    [nodes, ensembles, query, kind],
   );
+  const active = results[Math.min(cursor, Math.max(0, results.length - 1))];
+  function hover(result?: SearchResult) {
+    onHover(result?.kind === "musician" ? result.musician.id : null);
+  }
+  useEffect(() => {
+    if (open && active)
+      document
+        .getElementById(`search-option-${active.id}`)
+        ?.scrollIntoView({ block: "nearest" });
+  }, [open, active]);
   useEffect(() => {
     const close = (event: PointerEvent) => {
       if (!wrap.current?.contains(event.target as Node)) {
@@ -86,8 +108,9 @@ function MusicianSearch({
   useEffect(() => {
     setCursor(0);
   }, [nodes]);
-  function choose(id: number) {
-    onSelect(id);
+  function choose(result: SearchResult) {
+    if (result.kind === "musician") onSelect(result.musician.id);
+    else onEnsembleSelect(result.ensemble.id);
     onHover(null);
     setOpen(false);
     setQuery("");
@@ -115,19 +138,20 @@ function MusicianSearch({
         <Search size={16} aria-hidden="true" />
         <input
           id="main-search"
-          placeholder="Müzisyen ara"
-          aria-label="Müzisyen ara"
+          placeholder="Müzisyen veya grup ara"
+          aria-label="Müzisyen veya grup ara"
           role="combobox"
           aria-expanded={open}
-          aria-controls="musician-results"
+          aria-controls="atlas-results"
           aria-autocomplete="list"
           aria-activedescendant={
-            open && results[cursor]
-              ? `musician-option-${results[cursor].id}`
-              : undefined
+            open && active ? `search-option-${active.id}` : undefined
           }
           value={query}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            setOpen(true);
+            onOpen();
+          }}
           onChange={(e) => {
             setQuery(e.target.value);
             setCursor(0);
@@ -146,11 +170,11 @@ function MusicianSearch({
                 ),
               );
               setCursor(next);
-              onHover(results[next]?.id ?? null);
+              hover(results[next]);
             }
-            if (e.key === "Enter" && open && results[cursor]) {
+            if (e.key === "Enter" && open && active) {
               e.preventDefault();
-              choose(results[cursor].id);
+              choose(active);
             }
           }}
         />
@@ -176,45 +200,88 @@ function MusicianSearch({
       {open && (
         <div
           className="search-results surface"
-          id="musician-results"
-          role="listbox"
-          aria-label="Müzisyenler"
           onMouseLeave={() => onHover(null)}
         >
+          <div className="search-kinds" role="group" aria-label="Arama türü">
+            {(
+              [
+                ["all", "Tümü"],
+                ["musician", "Müzisyenler"],
+                ["ensemble", "Gruplar"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                aria-pressed={kind === value}
+                onClick={() => {
+                  setKind(value);
+                  setCursor(0);
+                  onHover(null);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <span className="search-caption">
-            {query ? "ARAMA SONUÇLARI" : "MÜZİSYENLERİ KEŞFET"}
+            {query ? "ARAMA SONUÇLARI" : "ARŞİVİ KEŞFET"}
           </span>
           {selected !== null && (
             <p className="search-hint">
-              Yolu görmek için bir ismin üzerine gel.
+              Yolu görmek için bir müzisyenin üzerine gel.
             </p>
           )}
-          {results.map((n, i) => (
-            <button
-              key={n.id}
-              id={`musician-option-${n.id}`}
-              role="option"
-              aria-selected={i === cursor}
-              className={i === cursor ? "highlighted" : ""}
-              onFocus={() => {
-                setCursor(i);
-                onHover(n.id);
-              }}
-              onMouseMove={() => {
-                setCursor(i);
-                onHover(n.id);
-              }}
-              onClick={() => choose(n.id)}
-            >
-              <i
-                className="color-dot"
-                style={{ background: groupInfo(n.group).color }}
-              />
-              <span>{n.name}</span>
-              <small>{groupInfo(n.group).name}</small>
-            </button>
-          ))}
-          {!results.length && <p>Bu filtrelerde müzisyen bulunamadı.</p>}
+          <div
+            id="atlas-results"
+            role="listbox"
+            aria-label="Müzisyenler ve gruplar"
+          >
+            {results.map((n, i) => (
+              <button
+                key={n.id}
+                id={`search-option-${n.id}`}
+                role="option"
+                aria-selected={n.id === active?.id}
+                className={n.id === active?.id ? "highlighted" : ""}
+                onFocus={() => {
+                  setCursor(i);
+                  hover(n);
+                }}
+                onMouseMove={() => {
+                  setCursor(i);
+                  hover(n);
+                }}
+                onClick={() => choose(n)}
+              >
+                {n.kind === "musician" ? (
+                  <i
+                    className="color-dot"
+                    style={{ background: groupInfo(n.musician.group).color }}
+                  />
+                ) : (
+                  <Users size={15} aria-hidden="true" />
+                )}
+                <span>{n.name}</span>
+                <small>
+                  {n.kind === "musician"
+                    ? groupInfo(n.musician.group).name
+                    : `Grup · ${number(n.ensemble.concerts)} konser`}
+                </small>
+              </button>
+            ))}
+          </div>
+          {!results.length && (kind === "musician" || projectsReady) && (
+            <p role="status">Bu filtrelerde sonuç bulunamadı.</p>
+          )}
+          {kind !== "musician" &&
+            !projectsReady &&
+            (projectError ? (
+              <button className="text-button" onClick={onRetry}>
+                Gruplar yüklenemedi. Tekrar dene
+              </button>
+            ) : (
+              <p role="status">Gruplar yükleniyor…</p>
+            ))}
         </div>
       )}
     </div>
@@ -336,6 +403,10 @@ function AtlasApp({
     parseResolution(params.get("resolution")),
   );
   const [layoutStatus, setLayoutStatus] = useState<LayoutStatus>("pending");
+  const [searchUsed, setSearchUsed] = useState(false);
+  const [selectedEnsembleId, setSelectedEnsembleId] = useState<string | null>(
+    params.get("g"),
+  );
   const [projects, setProjects] = useState<ProjectData | null>(null);
   const [projectError, setProjectError] = useState(false);
   const [projectAttempt, setProjectAttempt] = useState(0);
@@ -345,7 +416,9 @@ function AtlasApp({
   useSettingsPanel(filtersOpen ? "filters" : viewOpen ? "view-settings" : null);
   const [venueQuery, setVenueQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(
-    data.nodes.find((n) => n.key === params.get("m"))?.id ?? null,
+    params.has("g")
+      ? null
+      : (data.nodes.find((n) => n.key === params.get("m"))?.id ?? null),
   );
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const network = useRef<NetworkHandle>(null);
@@ -403,6 +476,28 @@ function AtlasApp({
       knownEnsembles,
     ],
   );
+  const selectedEnsemble =
+    ensembles.find((ensemble) => ensemble.id === selectedEnsembleId) ?? null;
+  const ensembleMembers = useMemo(
+    () =>
+      selectedEnsemble
+        ? Object.entries(selectedEnsemble.musicians)
+            .sort((a, b) => b[1] - a[1])
+            .flatMap(([id, concerts]) => {
+              const member = byId.get(Number(id));
+              return member ? [{ member, concerts }] : [];
+            })
+        : [],
+    [selectedEnsemble, byId],
+  );
+  const ensembleHighlights = useMemo(
+    () => ensembleMembers.map(({ member }) => member.id),
+    [ensembleMembers],
+  );
+  useEffect(() => {
+    if (projects && selectedEnsembleId && !selectedEnsemble)
+      setSelectedEnsembleId(null);
+  }, [projects, selectedEnsembleId, selectedEnsemble]);
   const musicianEnsembles = useMemo(
     () =>
       ensembles
@@ -432,7 +527,10 @@ function AtlasApp({
   const hovered =
     hoveredId !== null && visibleIds.has(hoveredId) ? hoveredId : null;
   const loadProjects =
-    selected !== null || (showEnsembles && layoutStatus !== "pending");
+    searchUsed ||
+    selectedEnsembleId !== null ||
+    selected !== null ||
+    (showEnsembles && layoutStatus !== "pending");
   useEffect(() => {
     if (!loadProjects || projects) return;
     const controller = new AbortController();
@@ -512,6 +610,7 @@ function AtlasApp({
     if (resolution !== 1.5) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
+    if (selectedEnsembleId) query.set("g", selectedEnsembleId);
     window.history.replaceState(
       null,
       "",
@@ -523,6 +622,7 @@ function AtlasApp({
     instrument,
     topCollaborators,
     selected,
+    selectedEnsembleId,
     byId,
     range,
     bounds,
@@ -544,6 +644,7 @@ function AtlasApp({
         else if (legendOpen) setLegendOpen(false);
         else {
           setSelectedId(null);
+          setSelectedEnsembleId(null);
           setHoveredId(null);
         }
       }
@@ -564,9 +665,11 @@ function AtlasApp({
     setVenueQuery("");
   }
   function select(id: number | null) {
+    setSelectedEnsembleId(null);
     setSelectedId(id);
   }
   function pick(id: number) {
+    setSelectedEnsembleId(null);
     setSelectedId(id);
     if (mode === "2d" || selectedId === id) network.current?.focus(id);
   }
@@ -622,6 +725,7 @@ function AtlasApp({
         path={path}
         labels={labels}
         instrument={instrument}
+        highlightedIds={ensembleHighlights}
         engine={engine}
         mode={mode}
         spacing={spacing}
@@ -666,8 +770,18 @@ function AtlasApp({
           </div>
         </div>
         <div className="top-controls">
-          <MusicianSearch
+          <AtlasSearch
             nodes={ranked}
+            ensembles={ensembles}
+            projectsReady={projects !== null}
+            projectError={projectError}
+            onRetry={() => setProjectAttempt((n) => n + 1)}
+            onOpen={() => setSearchUsed(true)}
+            onEnsembleSelect={(id) => {
+              setSelectedId(null);
+              setHoveredId(null);
+              setSelectedEnsembleId(id);
+            }}
             selected={selected}
             onSelect={pick}
             onHover={setHoveredId}
@@ -1092,7 +1206,7 @@ function AtlasApp({
             >
               Ağda {number(highlightedMusicians.length)} müzisyen vurgulanıyor.
             </p>
-            {!musician && (
+            {!musician && !selectedEnsemble && (
               <>
                 <div className="collaborator-heading">
                   <span>Konser sayısına göre</span>
@@ -1124,6 +1238,85 @@ function AtlasApp({
         )}
       </section>
 
+      {selectedEnsemble && (
+        <section
+          className={`selection-panel surface ${filtersOpen ? "with-filters" : ""}`}
+          aria-label="Seçili grup"
+        >
+          <div className="panel-heading">
+            <span className="section-caption">SEÇİLİ GRUP / PROJE</span>
+            <button
+              className="icon-button"
+              aria-label="Seçimi kaldır"
+              onClick={() => {
+                setSelectedEnsembleId(null);
+                setHoveredId(null);
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="ensemble-avatar">
+            <Users size={28} aria-hidden="true" />
+          </div>
+          <h2>{selectedEnsemble.name}</h2>
+          <p className="musician-meta">
+            {venue ? venue.name : "Seçili tarih aralığında"}
+          </p>
+          <div className="musician-stats">
+            <div>
+              <strong>{number(selectedEnsemble.concerts)}</strong>
+              <span>konser</span>
+            </div>
+            <div>
+              <strong>{number(ensembleMembers.length)}</strong>
+              <span>müzisyen</span>
+            </div>
+          </div>
+          <p className="field-note">
+            Konser kadrolarıdır; kalıcı grup üyeliği anlamına gelmez.
+          </p>
+          {ensembleMembers.some(({ member }) => !visibleIds.has(member.id)) && (
+            <button
+              className="text-button ensemble-reveal"
+              onClick={() => setMinConcerts(null)}
+            >
+              Tüm kadroyu haritada göster
+            </button>
+          )}
+          <div className="collaborator-heading">
+            <span>Konserlerdeki kadro</span>
+            <small>Konser</small>
+          </div>
+          <div
+            className="collaborators"
+            onMouseLeave={() => setHoveredId(null)}
+          >
+            {ensembleMembers.map(({ member, concerts }) => (
+              <button
+                key={member.id}
+                onClick={() => {
+                  if (!visibleIds.has(member.id)) setMinConcerts(null);
+                  setHoveredId(null);
+                  pick(member.id);
+                }}
+                onMouseEnter={() => setHoveredId(member.id)}
+                onFocus={() => setHoveredId(member.id)}
+                onBlur={() => setHoveredId(null)}
+              >
+                <i
+                  className="color-dot"
+                  style={{ background: groupInfo(member.group).color }}
+                />
+                <span>{member.name}</span>
+                <small>{number(concerts)}</small>
+                <ArrowUpRight size={14} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {musician && (
         <section
           className={`selection-panel surface ${filtersOpen ? "with-filters" : ""}`}
@@ -1142,18 +1335,7 @@ function AtlasApp({
               <X size={16} />
             </button>
           </div>
-          <div
-            className="musician-avatar"
-            style={{ color: groupInfo(musician.group).color }}
-            aria-hidden="true"
-          >
-            {musician.name
-              .split(" ")
-              .map((part) => part[0])
-              .slice(0, 2)
-              .join("")}
-            <AudioLines size={18} />
-          </div>
+          <MusicianPortrait key={musician.key} musician={musician} />
           <h2>{musician.name}</h2>
           <p className="musician-meta">
             <i
