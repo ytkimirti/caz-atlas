@@ -781,12 +781,44 @@ input[type="checkbox"] {
   max-height: 140px;
   overflow-y: auto;
 }
-.musician-ensembles li {
+.musician-ensembles summary {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 5px 0;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
   color: #536c53;
+  cursor: pointer;
+  border-radius: 5px;
+  list-style: none;
+  touch-action: manipulation;
+}
+.musician-ensembles summary::-webkit-details-marker {
+  display: none;
+}
+.musician-ensembles summary > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.musician-ensembles summary:hover,
+.musician-ensembles details[open] > summary {
+  background: #f0f1e9;
+}
+.musician-ensembles summary:focus-visible {
+  outline: 2px solid #587864;
+  outline-offset: -2px;
+}
+.musician-ensembles summary > svg {
+  transform: rotate(-90deg);
+}
+.musician-ensembles details[open] > summary > svg {
+  transform: rotate(0deg);
+}
+.ensemble-roster {
+  padding: 10px 0 8px 12px;
+}
+.ensemble-roster button[aria-current="true"] {
+  font-weight: 600;
 }
 .musician-ensembles small {
   white-space: nowrap;
