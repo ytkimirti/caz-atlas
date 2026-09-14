@@ -205,14 +205,14 @@ try {
   await page.getByRole("button", { name: "Mekan filtresini kaldır" }).click();
   await page.getByRole("button", { name: "Tüm tarihleri göster" }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect.poll(async () => (await canvas.boundingBox())!.height).toBe(650);
+  await expect.poll(async () => (await canvas.boundingBox())!.height).toBe(844);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
   const timeline = await page.locator(".timeline").boundingBox();
-  expect(timeline!.y + timeline!.height).toBe(844);
+  expect(timeline!.y + timeline!.height).toBe(832);
   const dateBox = await end.boundingBox();
   expect(dateBox!.x + dateBox!.width).toBeLessThanOrEqual(390);
   const chart = await page.locator(".timeline-chart").boundingBox();

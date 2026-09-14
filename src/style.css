@@ -102,7 +102,7 @@ input[type="checkbox"] {
   inset: 0;
   display: block;
   width: 100%;
-  height: calc(100% - var(--timeline-height));
+  height: 100%;
   touch-action: none;
   cursor: grab;
 }
@@ -114,18 +114,26 @@ input[type="checkbox"] {
 }
 .app-header {
   position: absolute;
-  inset: 0 0 auto;
-  height: 76px;
+  inset: 20px 24px auto;
+  height: 56px;
   display: grid;
-  grid-template-columns: 1fr minmax(280px, 420px) 1fr;
+  grid-template-columns: 1fr minmax(280px, 360px);
   align-items: center;
-  gap: 32px;
-  padding: 0 28px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  gap: 24px;
+  pointer-events: none;
   z-index: 12;
 }
+.app-header > * {
+  pointer-events: auto;
+}
 .identity {
+  width: max-content;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffffed;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -165,13 +173,7 @@ input[type="checkbox"] {
   color: var(--muted);
 }
 .archive-meta {
-  justify-self: end;
-  display: grid;
-  grid-template-columns: 6px auto;
-  align-items: center;
-  column-gap: 8px;
-  font-size: 11px;
-  color: #5d6c61;
+  display: none;
 }
 .archive-meta small {
   grid-column: 2;
@@ -198,7 +200,9 @@ input[type="checkbox"] {
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #f7f8f4;
+  background: #ffffffed;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
   color: var(--muted);
 }
 .search-field:focus-within,
@@ -300,12 +304,14 @@ input[type="checkbox"] {
 }
 .explore-toolbar {
   position: absolute;
-  top: 76px;
-  left: 0;
-  right: 0;
-  height: 56px;
+  top: 92px;
+  left: 24px;
+  height: 44px;
   background: #ffffffed;
-  border-bottom: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
   z-index: 6;
 }
 .toolbar-actions {
@@ -313,7 +319,7 @@ input[type="checkbox"] {
   align-items: center;
   gap: 8px;
   height: 100%;
-  padding-left: 28px;
+  padding: 4px;
 }
 .filter-toggle,
 .view-toggle {
@@ -347,7 +353,7 @@ input[type="checkbox"] {
 }
 .active-filters {
   position: absolute;
-  top: 88px;
+  top: 98px;
   left: 278px;
   right: 275px;
   display: flex;
@@ -379,10 +385,10 @@ input[type="checkbox"] {
 .filter-panel,
 .layout-controls {
   position: absolute;
-  top: 144px;
+  top: 148px;
   left: 24px;
   width: 320px;
-  max-height: calc(100dvh - var(--timeline-height) - 160px);
+  max-height: calc(100dvh - var(--timeline-height) - 180px);
   overflow-y: auto;
   padding: 20px;
   z-index: 10;
@@ -629,9 +635,15 @@ input[type="checkbox"] {
 }
 .instrument-explorer {
   position: absolute;
-  top: 87px;
-  right: 28px;
-  width: 220px;
+  top: 92px;
+  right: 24px;
+  width: 240px;
+  padding: 4px 10px;
+  background: #ffffffed;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
   z-index: 8;
 }
 .instrument-control {
@@ -667,7 +679,7 @@ input[type="checkbox"] {
 .instrument-results {
   position: absolute;
   top: 57px;
-  right: -4px;
+  right: 0;
   width: 320px;
   padding: 16px;
 }
@@ -691,14 +703,14 @@ input[type="checkbox"] {
   top: 148px;
   right: 24px;
   width: 320px;
-  max-height: calc(100dvh - var(--timeline-height) - 164px);
+  max-height: calc(100dvh - var(--timeline-height) - 184px);
   overflow-y: auto;
   padding: 22px;
   z-index: 5;
 }
 .atlas:has(.instrument-summary) .selection-panel {
   top: 212px;
-  max-height: calc(100dvh - var(--timeline-height) - 228px);
+  max-height: calc(100dvh - var(--timeline-height) - 248px);
 }
 .selection-panel .panel-heading {
   position: sticky;
@@ -882,7 +894,7 @@ input[type="checkbox"] {
 }
 .graph-tools {
   position: absolute;
-  bottom: calc(var(--timeline-height) + 20px);
+  bottom: calc(var(--timeline-height) + 40px);
   left: 28px;
   right: 28px;
   display: flex;
@@ -969,7 +981,7 @@ input[type="checkbox"] {
 }
 .graph-status {
   position: absolute;
-  bottom: calc(var(--timeline-height) + 24px);
+  bottom: calc(var(--timeline-height) + 44px);
   left: 50%;
   transform: translateX(-50%);
   width: max-content;
@@ -1118,13 +1130,16 @@ input[type="checkbox"] {
 .timeline {
   position: absolute;
   z-index: 11;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: 20px;
+  left: 24px;
+  right: 24px;
   height: var(--timeline-height);
-  padding: 16px 28px;
-  background: #fff;
-  border-top: 1px solid var(--line);
+  padding: 16px 20px;
+  background: #fffffff0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
   font-variant-numeric: tabular-nums;
 }
 .timeline-heading {
@@ -1465,13 +1480,16 @@ input[type="checkbox"] {
     --header-height: 206px;
   }
   .app-header {
-    height: 112px;
-    padding: 12px 16px;
+    inset: 12px 12px auto;
+    height: 92px;
     grid-template-columns: 1fr;
-    grid-template-rows: 34px 42px;
-    gap: 10px;
+    grid-template-rows: 42px 42px;
+    gap: 8px;
   }
   .identity {
+    width: 100%;
+    height: 42px;
+    padding: 5px 10px;
     gap: 9px;
   }
   .brand-icon {
@@ -1509,12 +1527,13 @@ input[type="checkbox"] {
     max-height: min(380px, 54dvh);
   }
   .explore-toolbar {
-    top: 112px;
-    height: 94px;
+    top: 114px;
+    left: 12px;
+    height: 44px;
   }
   .toolbar-actions {
-    height: 48px;
-    padding-left: 12px;
+    height: 42px;
+    padding: 3px;
     gap: 4px;
   }
   .filter-toggle,
@@ -1530,16 +1549,17 @@ input[type="checkbox"] {
   .active-filters {
     left: 16px;
     right: 16px;
-    top: 162px;
+    top: 166px;
   }
   .active-filters button {
     height: 30px;
     font-size: 10px;
   }
   .instrument-explorer {
-    top: 119px;
+    top: 114px;
     right: 12px;
     width: 152px;
+    padding: 4px 6px;
   }
   .instrument-control {
     gap: 2px;
@@ -1599,7 +1619,7 @@ input[type="checkbox"] {
   }
   .selection-panel {
     top: auto;
-    bottom: calc(var(--timeline-height) + 10px);
+    bottom: calc(var(--timeline-height) + 24px);
     right: 12px;
     left: 12px;
     width: auto;
@@ -1648,7 +1668,7 @@ input[type="checkbox"] {
   .graph-tools {
     left: 16px;
     right: 16px;
-    bottom: calc(var(--timeline-height) + 16px);
+    bottom: calc(var(--timeline-height) + 28px);
   }
   .graph-help > p {
     display: none;
@@ -1698,7 +1718,10 @@ input[type="checkbox"] {
     font-size: 10px;
   }
   .timeline {
-    padding: 14px 16px calc(10px + env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    padding: 14px 12px calc(10px + env(safe-area-inset-bottom));
   }
   .timeline-heading {
     margin-bottom: 14px;
@@ -1929,7 +1952,7 @@ input[type="checkbox"] {
 
 @media (max-width: 700px) {
   .atlas:has(.network-canvas[data-mode="3d"]) .selection-panel {
-    bottom: calc(var(--timeline-height) + 12px);
+    bottom: calc(var(--timeline-height) + 24px);
     max-height: min(210px, 28dvh);
   }
 }

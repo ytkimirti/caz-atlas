@@ -77,13 +77,22 @@ try {
     x: 0,
     y: 0,
     width: 1512,
-    height: 818,
+    height: 982,
   });
   expect(
     await page.evaluate(
       () => getComputedStyle(document.documentElement).colorScheme,
     ),
   ).toBe("light");
+  // The graph fills the viewport; empty space between overlays remains interactive.
+  expect(
+    await page.evaluate(
+      () => document.elementFromPoint(innerWidth / 2, 4)?.tagName,
+    ),
+  ).toBe("CANVAS");
+  const timelineBounds = (await page.locator(".timeline").boundingBox())!;
+  expect(timelineBounds.x).toBeGreaterThan(0);
+  expect(timelineBounds.y + timelineBounds.height).toBeLessThan(982);
   await expect(page.locator("nav")).toHaveCount(0);
   await expect(
     page.getByText(/Jam session|Plak koleksiyonu|Hikâyesi/),

@@ -263,12 +263,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         maxY = Math.max(maxY, p.y);
       }
       const availableWidth = width - (width > 700 ? 120 : 42);
-      const headerHeight =
-        parseFloat(
-          getComputedStyle(canvas).getPropertyValue("--header-height"),
-        ) || 0;
-      const topInset = headerHeight + 24;
-      const bottomInset = 64;
+      // The overview uses the full canvas. Controls float above it.
+      const topInset = 32;
+      const bottomInset = 32;
       const availableHeight = Math.max(48, height - topInset - bottomInset);
       const nextZoom = Math.max(
         0.025,
@@ -301,6 +298,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         bottom: height - 30,
       };
       const canvasBounds = canvas.getBoundingClientRect();
+      const timeline =
+        canvas.parentElement?.querySelector<HTMLElement>(".timeline");
+      if (timeline)
+        viewport.bottom = Math.min(
+          viewport.bottom,
+          timeline.getBoundingClientRect().top - canvasBounds.top - 16,
+        );
       for (const selector of [
         ".layout-controls",
         ".filter-panel",
