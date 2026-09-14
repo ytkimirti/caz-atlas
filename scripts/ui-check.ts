@@ -32,6 +32,24 @@ async function choose(name: string) {
   await search.fill(name);
   await page.locator(".search-results").getByRole("option").first().click();
 }
+async function checkNames(limit: number, requiredId?: number) {
+  const labels: { id: number; x: number; y: number; w: number; h: number }[] =
+    JSON.parse((await canvas.getAttribute("data-musician-labels"))!);
+  expect(labels.length).toBeLessThanOrEqual(limit);
+  if (requiredId !== undefined)
+    expect(labels.map((label) => label.id)).toContain(requiredId);
+  for (let i = 0; i < labels.length; i++) {
+    const a = labels[i];
+    for (const b of labels.slice(i + 1))
+      expect(
+        a.x < b.x + b.w &&
+          a.x + a.w > b.x &&
+          a.y < b.y + b.h &&
+          a.y + a.h > b.y,
+      ).toBe(false);
+  }
+  return labels;
+}
 try {
   await page.goto(base);
   await ready();
@@ -133,6 +151,26 @@ try {
   await search.press("Escape");
   await search.blur();
   await page.screenshot({ path: ".cache/minimal-desktop.png" });
+  await checkNames(20);
+
+  // A popular musician must not bypass the budget or cover other names.
+  const hub = defaultGraph.nodes.find((node) => node.key === "MishaPashkov")!;
+  const hubTies = adjacency(defaultGraph).get(hub.id)!;
+  expect(hubTies.length).toBeGreaterThan(12);
+  await search.fill(hub.name);
+  await page.locator(".search-results").getByRole("option").first().hover();
+  await expect(canvas).toHaveAttribute("data-focus", String(hub.id));
+  const hubLabels = await checkNames(12, hub.id);
+  expect(hubLabels.length).toBeGreaterThan(1);
+  const weights = new Map(hubTies.map((tie) => [tie.id, tie.weight]));
+  const shownWeights = hubLabels
+    .filter((label) => label.id !== hub.id)
+    .map((label) => weights.get(label.id)!);
+  expect(shownWeights.every((weight) => weight !== undefined)).toBe(true);
+  expect(shownWeights).toEqual([...shownWeights].sort((a, b) => b - a));
+  await page.screenshot({ path: ".cache/name-limit-hover.png" });
+  await search.press("Escape");
+  await search.blur();
 
   // Switching layouts runs a fresh worker and persists a valid selection.
   for (const engine of ["d3", "ngraph", "forceatlas2", "communities"]) {
@@ -177,6 +215,7 @@ try {
   await page.locator(".search-results").getByRole("option").first().hover();
   await expect(page.locator(".path-caption")).toHaveText("En kısa yol · 2 bağ");
   await expect(canvas).toHaveAttribute("data-path", expectedPath.join(","));
+  await checkNames(12);
   await expect(page.locator(".selection-panel h2")).toHaveText("Asude Şaşmaz");
   await page.screenshot({ path: ".cache/minimal-path.png" });
   const disconnected = defaultGraph.nodes.find(
@@ -259,9 +298,11 @@ try {
     ),
   ).toBe(true);
   await page.screenshot({ path: ".cache/minimal-mobile.png" });
+  await checkNames(8);
   await choose("asude sasmaz");
   await expect(page.locator(".selection-panel h2")).toHaveText("Asude Şaşmaz");
   await page.screenshot({ path: ".cache/minimal-mobile-selected.png" });
+  await checkNames(6, from.id);
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
   await expect(page.locator(".selection-panel")).not.toBeVisible();
   await expect(page.locator(".filter-panel")).toBeVisible();

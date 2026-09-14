@@ -461,26 +461,39 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         }
       }
       const occupied: { x: number; y: number; w: number; h: number }[] = [];
+      // Give the active people first choice of space, then their strongest ties.
+      // Hovering a hub must share the same finite budget as every other view.
+      const collaborators =
+        focus === null
+          ? []
+          : [...(neighbors.get(focus) ?? [])].sort(
+              (a, b) =>
+                b.weight - a.weight ||
+                (s.counts[b.id] ?? 0) - (s.counts[a.id] ?? 0) ||
+                a.id - b.id,
+            );
       const orderedIds = new Set([
-        ...ranked.filter((n) => !emphasized.has(n.id)).map((n) => n.id),
         ...(s.hovered === null ? [] : [s.hovered]),
         ...(s.selected === null ? [] : [s.selected]),
         ...s.path,
-        ...connected,
+        ...collaborators.map((n) => n.id),
+        ...(focus === null && s.labels ? ranked.map((n) => n.id) : []),
       ]);
+      const labelLimit =
+        focus === null ? (width > 700 ? 20 : 8) : width > 700 ? 12 : 6;
+      const visibleLabels: {
+        id: number;
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }[] = [];
       const byId = new Map(nodes.map((n) => [n.id, n]));
-      let labels = 0;
       for (const id of orderedIds) {
+        if (visibleLabels.length >= labelLimit) break;
         const n = byId.get(id);
         if (!n) continue;
         const special = emphasized.has(id);
-        if (
-          !special &&
-          (!s.labels ||
-            labels >
-              (width > 700 ? Math.min(65, 14 + zoom * 26) : 10 + zoom * 12))
-        )
-          continue;
         const p = point(id),
           r = special ? Math.max(4.5, radius(id) + 2) : radius(id);
         if (p.x < 16 || p.x > width - 16 || p.y < 60 || p.y > height - 55)
@@ -512,9 +525,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
                   ),
               0,
             );
-          const best = candidates.reduce((a, b) =>
-            overlap(a) <= overlap(b) ? a : b,
-          );
+          const best = candidates.find((candidate) => overlap(candidate) === 0);
+          if (!best) continue;
           x = best.x;
           y = best.y;
           ctx.beginPath();
@@ -528,7 +540,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.stroke();
         }
         if (
-          !special &&
           occupied.some(
             (b) =>
               x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + 18 > b.y,
@@ -546,8 +557,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               : "#686e65";
         ctx.textAlign = "center";
         ctx.fillText(n.name, x + w / 2, y + 13);
-        if (!special) labels++;
+        visibleLabels.push({ id, x, y, w, h: 18 });
       }
+      canvas.dataset.musicianLabels = JSON.stringify(visibleLabels);
       const visibleEnsembles: string[] = [];
       if (s.showEnsembles) {
         const labeledMembers = new Set<number>();
