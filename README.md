@@ -25,6 +25,7 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 - Oynat düğmesi seçilen aralığın başından itibaren ağı biriktirerek gösterir. Duraklatma, 0,5× / 1× / 2× / 4× hız ve son 1 / 5 / 10 / 20 yıl kısayolları vardır. Tarih değişince topluluklar ve konumlar seçili dönemdeki ortak konserlere göre yeniden hesaplanır; işlem boyunca ilerleme çubuğu görünür. Hızlı tarih değişiklikleri önceki hesabı iptal eder; oynatma her dönemin hesabı tamamlanınca ilerler.
 - Aralık uçları klavyeyle birer ay, Shift ile birer yıl değişir; Home ve End sınıra götürür. Tarih aralığı ve oynatma konumu `from`, `to`, `at` parametreleriyle URL'de saklanır. Konser eşiği, mekan filtresi ve enstrüman vurgulaması aynı tarih görünümüne uygulanır.
 - **Yerleşim** menüsünden Topluluklar (varsayılan), ForceAtlas2, D3 veya ngraph seçilebilir. Topluluklar, sık birlikte çalanlara ayrı alan açar ve ilişkili toplulukları yakına yerleştirir. **Gruplama** ile geniş, dengeli veya ayrıntılı topluluklar seçilebilir. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
+- **2D / 3D** düğmeleriyle görünümü değiştir. 3D modunda ağı sürükleyerek veya graf odaktayken ok tuşlarıyla döndür; Shift + sürükle veya Shift + ok tuşlarıyla taşı. Kaydırarak yakınlaş; dokunmatik ekranda bir parmakla döndür, iki parmakla taşı ve yakınlaş. **Görünümü sıfırla** veya `0` başlangıç açısına döner ve ağı ekrana sığdırır. Arama, seçim, en kısa yol, enstrüman vurgulama ve zaman çizelgesi iki modda da çalışır. Görünüm URL'de `view=3d` ile saklanır; 2D'ye dönünce önceki yerleşim motoru korunur. 3D yerleşimi ngraph ile Web Worker'da üç eksende hesaplanır; derinlik mesafeleri de coğrafya veya zaman ifade etmez.
 - Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Mobilde filtreler kaydırılabilir bir overlay'dir.
 
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
@@ -81,6 +82,7 @@ Her iki komut da gerekli bayrak olmadan kullanım bilgisini yazıp çıkar. Veri
 bun test
 bun run build
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
+ATLAS_TEST_URL=http://localhost:5173 bun run test:3d
 ATLAS_TEST_URL=http://localhost:5173 bun run test:timeline
 ATLAS_TEST_URL=http://localhost:5173 bun run test:layouts
 ATLAS_TEST_URL=http://localhost:5173 bun run test:communities

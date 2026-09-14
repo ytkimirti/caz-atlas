@@ -23,6 +23,7 @@ import {
   parseResolution,
   layoutEngines,
   parseEngine,
+  parseViewMode,
   parseSpacing,
   spacingOptions,
 } from "./layout-options";
@@ -302,6 +303,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         ? Number(params.get("top"))
         : 5,
   );
+  const [mode, setMode] = useState(() => parseViewMode(params.get("view")));
   const [engine, setEngine] = useState(() => parseEngine(params.get("engine")));
   const [spacing, setSpacing] = useState(() =>
     parseSpacing(params.get("spacing")),
@@ -448,6 +450,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         "top",
         topCollaborators === null ? "all" : String(topCollaborators),
       );
+    if (mode === "3d") query.set("view", mode);
     if (engine !== DEFAULT_ENGINE) query.set("engine", engine);
     if (resolution !== 1.5) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
@@ -467,6 +470,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     range,
     bounds,
     cursor,
+    mode,
     engine,
     spacing,
     resolution,
@@ -558,30 +562,58 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         labels={labels}
         instrument={instrument}
         engine={engine}
+        mode={mode}
         spacing={spacing}
         resolution={resolution}
         onLayoutStatus={setLayoutStatus}
         onSelect={select}
         onHover={setHoveredId}
       />
+      <div
+        className="view-switch surface"
+        role="group"
+        aria-label="Graf boyutu"
+      >
+        {(["2d", "3d"] as const).map((value) => (
+          <button
+            key={value}
+            aria-pressed={mode === value}
+            onClick={() => {
+              setMode(value);
+              setHoveredId(null);
+            }}
+          >
+            {value.toUpperCase()}
+          </button>
+        ))}
+      </div>
       <div className="layout-controls surface" aria-label="Graf yerleşimi">
-        <label htmlFor="layout-engine">Yerleşim</label>
-        <select
-          id="layout-engine"
-          value={engine}
-          onChange={(e) => setEngine(parseEngine(e.target.value))}
-          aria-describedby="layout-description"
-        >
-          {layoutEngines.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-        </select>
-        <p id="layout-description">
-          {layoutEngines.find((option) => option.id === engine)!.description}
-        </p>
-        {engine === "communities" && (
+        {mode === "2d" ? (
+          <>
+            <label htmlFor="layout-engine">Yerleşim</label>
+            <select
+              id="layout-engine"
+              value={engine}
+              onChange={(e) => setEngine(parseEngine(e.target.value))}
+              aria-describedby="layout-description"
+            >
+              {layoutEngines.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+            <p id="layout-description">
+              {
+                layoutEngines.find((option) => option.id === engine)!
+                  .description
+              }
+            </p>
+          </>
+        ) : (
+          <p className="spatial-title">Üç boyutlu ağ</p>
+        )}
+        {mode === "2d" && engine === "communities" && (
           <div className="layout-spacing">
             <label htmlFor="community-detail">Gruplama</label>
             <select
@@ -611,6 +643,26 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             ))}
           </select>
         </div>
+        {mode === "3d" && (
+          <>
+            <p id="spatial-help">
+              <span className="spatial-desktop-help">
+                Sürükleyerek döndür. Shift + sürükle ile taşı. Kaydırarak
+                yakınlaş. Graf odaktayken ok tuşlarıyla döndür, Shift + ok
+                tuşlarıyla taşı.
+              </span>
+              <span className="spatial-touch-help">
+                Tek parmakla döndür. İki parmakla taşı ve yakınlaş.
+              </span>
+            </p>
+            <button
+              className="spatial-reset"
+              onClick={() => network.current?.fit()}
+            >
+              Görünümü sıfırla
+            </button>
+          </>
+        )}
         <p className="layout-feedback">
           {layoutStatus === "pending"
             ? "Yerleşim hesaplanıyor…"

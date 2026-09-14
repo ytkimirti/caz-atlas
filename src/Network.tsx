@@ -6,8 +6,10 @@ import {
   useRef,
 } from "react";
 import type { Atlas, Edge, Ensemble } from "./types";
-import type { LayoutEngine, LayoutStatus } from "./layout-options";
+import type { LayoutEngine, LayoutStatus, ViewMode } from "./layout-options";
 import type { LayoutResponse } from "./layout";
+import { project3D, sceneBounds } from "./projection";
+import type { Point3D } from "./projection";
 import { groupInfo } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
 import { clusterBounds, ensembleClusters } from "./ensembles";
@@ -33,6 +35,7 @@ interface Props {
   labels: boolean;
   instrument: string;
   engine: LayoutEngine;
+  mode: ViewMode;
   spacing: number;
   resolution: number;
   onLayoutStatus: (status: LayoutStatus) => void;
@@ -42,7 +45,7 @@ interface Props {
 
 const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const previousPositions = useRef(new Map<number, { x: number; y: number }>());
+  const previousPositions = useRef(new Map<number, Point3D>());
   const neighbors = useMemo(() => adjacency(props.data), [props.data]);
   const connectionStrengths = useMemo(() => {
     const ties =
@@ -118,6 +121,22 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         previousPositions.current.get(n.id) ?? { x: n.x, y: n.y },
       ]),
     );
+    const spatial = props.mode === "3d";
+    let scene = sceneBounds(positions.values());
+    let yaw = 0.35,
+      pitch = -0.2;
+    const projected = new Map<number, ReturnType<typeof project3D>>();
+    function updateProjection() {
+      projected.clear();
+      for (const [id, p] of positions)
+        projected.set(
+          id,
+          spatial
+            ? project3D(p, scene.center, scene.radius, yaw, pitch)
+            : { x: p.x, y: p.y, depth: 0, scale: 1 },
+        );
+    }
+    updateProjection();
     const opacity = new Map(props.data.nodes.map((n) => [n.id, 1]));
     const animatedEdges = new Map(
       props.edges.map((edge) => [
@@ -151,7 +170,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       pinched = false;
 
     function point(id: number) {
-      const p = positions.get(id)!;
+      const p = projected.get(id)!;
       return { x: p.x * zoom + panX, y: p.y * zoom + panY };
     }
     function radius(id: number) {
@@ -160,7 +179,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         Math.min(
           9,
           (2 + Math.log2(1 + (state.current.counts[id] || 1)) * 0.5) *
-            Math.sqrt(zoom),
+            Math.sqrt(zoom) *
+            (projected.get(id)?.scale ?? 1),
         ),
       );
     }
@@ -170,7 +190,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const strength = s.connectionStrengths.get(id);
       if (strength !== undefined)
         return (
-          (3 + 5 * strength) * Math.max(0.75, Math.min(1.25, Math.sqrt(zoom)))
+          (3 + 5 * strength) *
+          Math.max(0.75, Math.min(1.25, Math.sqrt(zoom))) *
+          (projected.get(id)?.scale ?? 1)
         );
       if (s.path.includes(id)) return Math.max(4.5, radius(id) + 2);
       return radius(id);
@@ -204,7 +226,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         minY = Infinity,
         maxX = -Infinity,
         maxY = -Infinity;
-      for (const p of positions.values()) {
+      for (const p of projected.values()) {
         minX = Math.min(minX, p.x);
         maxX = Math.max(maxX, p.x);
         minY = Math.min(minY, p.y);
@@ -247,6 +269,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       retryLayout: () => startLayout(),
       fit: () => {
         clearHover();
+        yaw = 0.35;
+        pitch = -0.2;
+        updateProjection();
         fit(true);
       },
       zoom: (factor) => {
@@ -299,7 +324,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         canvas.setAttribute("aria-busy", String(status === "pending"));
         state.current.onLayoutStatus(status);
       };
-      canvas.dataset.engine = props.engine;
+      canvas.dataset.engine = spatial ? "ngraph" : props.engine;
       if (!nodes.length) {
         setStatus("ready");
         return;
@@ -328,8 +353,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             return;
           }
           for (const node of event.data.positions)
-            positions.set(node.id, { x: node.x, y: node.y });
+            positions.set(node.id, { x: node.x, y: node.y, z: node.z });
           previousPositions.current = new Map(positions);
+          scene = sceneBounds(positions.values());
+          updateProjection();
           settled = true;
           worker?.terminate();
           worker = null;
@@ -350,6 +377,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           })),
           edges: props.layoutData.edges,
           engine: props.engine,
+          mode: props.mode,
           spacing: props.spacing,
           resolution: props.resolution,
         });
@@ -362,14 +390,17 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
 
     function hit(x: number, y: number) {
       let id: number | null = null,
-        nearest = Infinity;
+        nearest = Infinity,
+        front = -Infinity;
       for (const n of state.current.data.nodes) {
         const p = point(n.id),
           distance = Math.hypot(p.x - x, p.y - y);
+        const depth = projected.get(n.id)!.depth;
         if (
           distance <= Math.max(7, markerRadius(n.id) + 3) &&
-          distance < nearest
+          (spatial ? depth > front : distance < nearest)
         ) {
+          front = depth;
           nearest = distance;
           id = n.id;
         }
@@ -392,6 +423,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function down(event: PointerEvent) {
       if (event.button !== 0) return;
       camera = null;
+      canvas.focus({ preventScroll: true });
       const p = local(event);
       pointers.set(event.pointerId, p);
       canvas.setPointerCapture(event.pointerId);
@@ -425,8 +457,17 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         pinched = true;
         moved = true;
       } else if (moved || Math.hypot(p.x - startX, p.y - startY) > 4) {
-        panX += p.x - old.x;
-        panY += p.y - old.y;
+        if (spatial && !event.shiftKey) {
+          yaw += (p.x - old.x) * 0.006;
+          pitch = Math.max(
+            -Math.PI / 2,
+            Math.min(Math.PI / 2, pitch + (p.y - old.y) * 0.006),
+          );
+          updateProjection();
+        } else {
+          panX += p.x - old.x;
+          panY += p.y - old.y;
+        }
         moved = true;
         clearHover();
         canvas.style.cursor = "grabbing";
@@ -455,6 +496,32 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const p = local(event);
       zoomAt(Math.exp(-event.deltaY * 0.0015), p.x, p.y);
     }
+    function keydown(event: KeyboardEvent) {
+      if (
+        !spatial ||
+        !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
+      )
+        return;
+      event.preventDefault();
+      camera = null;
+      const dx =
+        event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+      const dy =
+        event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (event.shiftKey) {
+        panX += dx * 30;
+        panY += dy * 30;
+      } else {
+        yaw += dx * 0.12;
+        pitch = Math.max(
+          -Math.PI / 2,
+          Math.min(Math.PI / 2, pitch + dy * 0.12),
+        );
+        updateProjection();
+      }
+      clearHover();
+    }
+    canvas.addEventListener("keydown", keydown);
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
@@ -602,10 +669,17 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             return priority(a.id) - priority(b.id);
           }),
       ];
+      if (spatial)
+        drawOrder.sort(
+          (a, b) => projected.get(a.id)!.depth - projected.get(b.id)!.depth,
+        );
       for (const node of drawOrder) {
         const alpha = opacity.get(node.id) || 0;
         if (!alpha) continue;
-        ctx.globalAlpha = alpha;
+        const projection = projected.get(node.id)!;
+        ctx.globalAlpha =
+          alpha *
+          (spatial ? 0.65 + 0.35 * (projection.depth / scene.radius) : 1);
         const p = point(node.id),
           r = markerRadius(node.id) * (0.5 + alpha * 0.5);
         const strength = s.connectionStrengths.get(node.id);
@@ -635,6 +709,21 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
                 ? "#28644d"
                 : groupInfo(node.group).color;
         ctx.fill();
+        if (spatial && r > 1.5) {
+          const light = ctx.createRadialGradient(
+            p.x - r * 0.35,
+            p.y - r * 0.4,
+            0,
+            p.x,
+            p.y,
+            r,
+          );
+          light.addColorStop(0, "#ffffff80");
+          light.addColorStop(0.5, "#ffffff00");
+          light.addColorStop(1, "#172a2630");
+          ctx.fillStyle = light;
+          ctx.fill();
+        }
         if (highlighted.has(node.id)) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2);
@@ -818,6 +907,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.dataset.visibleEdges = String(s.edges.length);
       canvas.dataset.highlighted = [...highlighted].join(",");
       canvas.dataset.view = `${zoom},${panX},${panY}`;
+      canvas.dataset.rotation = `${yaw},${pitch}`;
+      canvas.dataset.depth = String(spatial ? scene.radius : 0);
       canvas.dataset.focus = focus === null ? "" : String(focus);
       canvas.dataset.path = s.path.join(",");
       canvas.dataset.selectedPosition =
@@ -831,6 +922,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       cancelAnimationFrame(frame);
       observer.disconnect();
       worker?.terminate();
+      canvas.removeEventListener("keydown", keydown);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
@@ -843,6 +935,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     props.layoutData,
     props.layoutCounts,
     props.engine,
+    props.mode,
     props.spacing,
     props.resolution,
   ]);
@@ -852,7 +945,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ref={canvasRef}
       className="network-canvas"
       role="img"
-      aria-label={`${props.data.nodes.length} müzisyenin bağlantı grafı. Hover ile bağlantıları, seçimden sonra hover ile en kısa yolu görün. Klavye ile seçim için aramayı kullanın.`}
+      tabIndex={0}
+      data-mode={props.mode}
+      aria-describedby={props.mode === "3d" ? "spatial-help" : undefined}
+      aria-label={`${props.data.nodes.length} müzisyenin ${props.mode.toUpperCase()} bağlantı grafı. Hover ile bağlantıları, seçimden sonra hover ile en kısa yolu görün. Klavye ile seçim için aramayı kullanın.`}
     />
   );
 });

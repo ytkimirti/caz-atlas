@@ -19,7 +19,8 @@
     "data:archive": "bun run scripts/archive.ts",
     "data:restore": "bun run scripts/restore.ts",
     "data:concerts": "bun run scripts/prepare-concerts.ts",
-    "test:timeline": "bun run scripts/timeline-check.ts"
+    "test:timeline": "bun run scripts/timeline-check.ts",
+    "test:3d": "bun run scripts/spatial-check.ts"
   },
   "dependencies": {
     "d3-force": "^3.0.0",

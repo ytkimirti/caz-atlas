@@ -1753,3 +1753,64 @@ select {
     bottom: calc(var(--timeline-height) + 84px);
   }
 }
+
+.view-switch {
+  position: absolute;
+  top: 24px;
+  left: 210px;
+  z-index: 5;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+}
+.view-switch button {
+  min-width: 42px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #686e65;
+  font-size: 12px;
+  font-weight: 600;
+}
+.view-switch button[aria-pressed="true"] {
+  background: #e9efe3;
+  color: #28583d;
+}
+.layout-controls .spatial-title {
+  margin: 0;
+  color: #28583d;
+  font-weight: 600;
+}
+.spatial-reset {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid #dfe2d7;
+  border-radius: 6px;
+  background: #fafaf6;
+  font-size: 11px;
+}
+.network-canvas:focus-visible {
+  outline: 2px solid #536c53;
+  outline-offset: -3px;
+}
+@media (max-width: 700px) {
+  .view-switch {
+    top: 12px;
+    left: auto;
+    right: 16px;
+  }
+}
+
+.spatial-touch-help {
+  display: none;
+}
+@media (pointer: coarse) {
+  .spatial-desktop-help {
+    display: none;
+  }
+  .spatial-touch-help {
+    display: inline;
+  }
+}

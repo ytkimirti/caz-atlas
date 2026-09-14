@@ -13,7 +13,7 @@ import forceAtlas2 from "graphology-layout-forceatlas2";
 import createGraph from "ngraph.graph";
 import createLayout from "ngraph.forcelayout";
 import type { Edge } from "./types";
-import type { LayoutEngine } from "./layout-options";
+import type { LayoutEngine, ViewMode } from "./layout-options";
 
 export interface LayoutNode {
   id: number;
@@ -23,6 +23,7 @@ export interface Position {
   id: number;
   x: number;
   y: number;
+  z?: number;
 }
 export interface LayoutRequest {
   nodes: LayoutNode[];
@@ -30,6 +31,7 @@ export interface LayoutRequest {
   engine: LayoutEngine;
   spacing: number;
   resolution?: number;
+  mode?: ViewMode;
 }
 export type LayoutResponse =
   { status: "ready"; positions: Position[] } | { status: "fallback" };
@@ -40,10 +42,11 @@ function simulate(
   edges: Edge[],
   engine: LayoutEngine,
   spacing: number,
+  spatial: boolean,
 ) {
   if (nodes.length < 2) return;
   const iterations = nodes.length > 5000 ? 200 : 320;
-  if (engine === "d3") {
+  if (!spatial && engine === "d3") {
     const simulation = forceSimulation(nodes)
       .force(
         "link",
@@ -61,7 +64,7 @@ function simulate(
       .force("collision", forceCollide<Particle>(12 * spacing).iterations(2))
       .stop();
     simulation.tick(iterations);
-  } else if (engine === "forceatlas2") {
+  } else if (!spatial && engine === "forceatlas2") {
     const graph = new UndirectedGraph();
     for (const n of nodes) graph.addNode(n.id, { x: n.x, y: n.y, size: 3 });
     for (const e of edges)
@@ -86,7 +89,7 @@ function simulate(
     for (const n of nodes) graph.addNode(n.id);
     for (const e of edges) graph.addLink(e.source, e.target);
     const layout = createLayout(graph, {
-      dimensions: 2,
+      dimensions: spatial ? 3 : 2,
       springLength: 65,
       springCoefficient: 0.0006,
       gravity: -12 * spacing,
@@ -95,12 +98,13 @@ function simulate(
       theta: 0.8,
     });
     try {
-      for (const n of nodes) layout.setNodePosition(n.id, n.x, n.y);
+      for (const n of nodes) layout.setNodePosition(n.id, n.x, n.y, n.z ?? 0);
       for (let i = 0; i < iterations * 2; i++) if (layout.step()) break;
       for (const n of nodes) {
         const p = layout.getNodePosition(n.id);
         n.x = p.x;
         n.y = p.y;
+        if (spatial) n.z = p.z ?? 0;
       }
     } finally {
       layout.dispose();
@@ -113,13 +117,26 @@ function simulate(
     values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
   const centerX = median(nodes.map((n) => n.x));
   const centerY = median(nodes.map((n) => n.y));
+  const centerZ = spatial ? median(nodes.map((n) => n.z ?? 0)) : 0;
   const typicalRadius =
-    median(nodes.map((n) => Math.hypot(n.x - centerX, n.y - centerY))) || 1;
-  const scale = (14 * Math.sqrt(nodes.length)) / typicalRadius;
+    median(
+      nodes.map((n) =>
+        Math.hypot(
+          n.x - centerX,
+          n.y - centerY,
+          spatial ? (n.z ?? 0) - centerZ : 0,
+        ),
+      ),
+    ) || 1;
+  const scale =
+    (spatial
+      ? 32 * Math.cbrt(nodes.length) * spacing
+      : 14 * Math.sqrt(nodes.length)) / typicalRadius;
   for (const n of nodes) {
     const dx = n.x - centerX,
-      dy = n.y - centerY;
-    const radius = Math.hypot(dx, dy);
+      dy = n.y - centerY,
+      dz = spatial ? (n.z ?? 0) - centerZ : 0;
+    const radius = Math.hypot(dx, dy, dz);
     // Compress only long tails, retaining directions and local communities.
     const limit = typicalRadius * 2;
     const compressed =
@@ -129,9 +146,11 @@ function simulate(
     const factor = radius ? (scale * compressed) / radius : scale;
     n.x = dx * factor;
     n.y = dy * factor;
+    if (spatial) n.z = dz * factor;
     n.vx = 0;
     n.vy = 0;
   }
+  if (spatial) return;
   const collision = forceSimulation(nodes)
     .velocityDecay(0.6)
     .force(
@@ -146,7 +165,8 @@ function simulate(
 
 export function computeLayout(request: LayoutRequest): Position[] {
   const { engine, spacing } = request;
-  if (engine === "communities")
+  const spatial = request.mode === "3d";
+  if (!spatial && engine === "communities")
     return computeCommunityLayout(request).positions;
   const nodes: Particle[] = [...request.nodes]
     .sort((a, b) => b.count - a.count || a.id - b.id)
@@ -154,6 +174,7 @@ export function computeLayout(request: LayoutRequest): Position[] {
       ...n,
       x: Math.cos(i * 2.3999632297) * Math.sqrt(i) * 19,
       y: Math.sin(i * 2.3999632297) * Math.sqrt(i) * 19,
+      ...(spatial ? { z: Math.sin(i * 1.6180339887) * Math.sqrt(i) * 19 } : {}),
     }));
   if (!nodes.length) return [];
   const edges = layoutLinks(nodes, request.edges);
@@ -182,13 +203,17 @@ export function computeLayout(request: LayoutRequest): Position[] {
   for (const e of edges) components[componentOf.get(e.source)!].edges.push(e);
   const boxes = components
     .map((c) => {
-      simulate(c.nodes, c.edges, engine, spacing);
+      simulate(c.nodes, c.edges, engine, spacing, spatial);
       let minX = Infinity,
         minY = Infinity,
         maxX = -Infinity,
         maxY = -Infinity;
       for (const n of c.nodes) {
-        if (!Number.isFinite(n.x) || !Number.isFinite(n.y))
+        if (
+          !Number.isFinite(n.x) ||
+          !Number.isFinite(n.y) ||
+          (spatial && !Number.isFinite(n.z))
+        )
           throw new Error("Non-finite layout position");
         minX = Math.min(minX, n.x);
         minY = Math.min(minY, n.y);
@@ -228,5 +253,10 @@ export function computeLayout(request: LayoutRequest): Position[] {
     x += box.width;
     rowHeight = Math.max(rowHeight, box.height);
   }
-  return nodes.map(({ id, x, y }) => ({ id, x, y }));
+  return nodes.map(({ id, x, y, z }) => ({
+    id,
+    x,
+    y,
+    ...(spatial ? { z } : {}),
+  }));
 }
