@@ -1185,6 +1185,28 @@ input[type="checkbox"] {
 .timeline-play:hover {
   background: #1c4935;
 }
+.is-playing .timeline-play {
+  background: #28644d;
+  color: #fff;
+  box-shadow:
+    0 0 0 5px #28644d12,
+    0 4px 16px #28644d26;
+}
+.timeline-heading .timeline-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #28644d;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.timeline-live i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px #28644d16;
+}
 .timeline-play svg {
   width: 15px;
   height: 15px;

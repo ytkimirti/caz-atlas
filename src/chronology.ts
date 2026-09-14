@@ -14,6 +14,46 @@ export const monthLabel = (month: number) =>
   });
 export type DateRange = [number, number];
 
+// Skip the empty lead-in on replay, retaining the selected counting window.
+export function firstPlaybackMonth(
+  timeline: DatedConcert[],
+  range: DateRange,
+  minimum: number | null,
+  venue = "",
+): number {
+  const counts = new Map<number, number>();
+  const eligible = new Set<number>();
+  const neighbors = new Map<number, Set<number>>();
+  let firstVisible: number | undefined;
+  for (const concert of timeline) {
+    const month = monthIndex(concert.date);
+    if (month > range[1]) break;
+    if (month < range[0] || (venue && concert.venue !== venue)) continue;
+    const members = [...new Set(concert.musicians)];
+    for (const id of members) {
+      const count = (counts.get(id) ?? 0) + 1;
+      counts.set(id, count);
+      if (count > (minimum ?? 0)) {
+        firstVisible ??= month;
+        eligible.add(id);
+      }
+    }
+    if (members.filter((id) => eligible.has(id)).length > 1) return month;
+    // A solo appearance can also make an earlier shared concert visible.
+    for (const id of members) {
+      if (
+        eligible.has(id) &&
+        [...(neighbors.get(id) ?? [])].some((other) => eligible.has(other))
+      )
+        return month;
+      if (!neighbors.has(id)) neighbors.set(id, new Set());
+      for (const other of members)
+        if (other !== id) neighbors.get(id)!.add(other);
+    }
+  }
+  return firstVisible ?? range[0];
+}
+
 export function parseMonth(value: string | null): number | null {
   return value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
     ? monthIndex(value)

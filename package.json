@@ -20,6 +20,7 @@
     "data:restore": "bun run scripts/restore.ts",
     "data:concerts": "bun run scripts/prepare-concerts.ts",
     "test:timeline": "bun run scripts/timeline-check.ts",
+    "test:physics": "bun run scripts/physics-check.ts",
     "test:3d": "bun run scripts/spatial-check.ts",
     "test:focus": "bun run scripts/focus-check.ts"
   },

@@ -14,6 +14,7 @@ import type { Point3D } from "./projection";
 import { groupInfo } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
 import { clusterBounds, ensembleClusters } from "./ensembles";
+import { LivePhysicsClient } from "./live-physics-client";
 
 export interface NetworkHandle {
   retryLayout: () => void;
@@ -39,6 +40,8 @@ interface Props {
   mode: ViewMode;
   spacing: number;
   resolution: number;
+  playing: boolean;
+  livePhysics: boolean;
   onLayoutStatus: (status: LayoutStatus) => void;
   onSelect: (id: number | null) => void;
   onHover: (id: number | null) => void;
@@ -109,6 +112,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       props.counts,
       props.ensembles,
       props.showEnsembles,
+      props.playing,
     ],
   );
 
@@ -119,10 +123,20 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     const positions = new Map(
       nodes.map((n) => [
         n.id,
-        previousPositions.current.get(n.id) ?? { x: n.x, y: n.y },
+        previousPositions.current.get(n.id) ?? {
+          x: n.x,
+          y: n.y,
+          z: props.mode === "3d" ? Math.sin(n.id * 1.618) * 120 : 0,
+        },
       ]),
     );
     const spatial = props.mode === "3d";
+    let physics: LivePhysicsClient | null = null;
+    let physicsData = props.data;
+    const births = new Map<number, number>();
+    let physicsRunning = false;
+    let autoFrame = props.livePhysics;
+    let lastFit = 0;
     let scene = sceneBounds(positions.values());
     let pivot: Point3D = { ...scene.center };
     let projectionRadius = scene.radius;
@@ -217,7 +231,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       if (
         animate &&
         !reducedMotion.matches &&
-        (spatial || nodes.length <= 2000)
+        (props.livePhysics || spatial || nodes.length <= 2000)
       ) {
         camera = {
           from: { zoom, x: panX, y: panY, pivot: { ...pivot } },
@@ -246,7 +260,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         maxY = -Infinity;
       const points =
         spatial && targetPivot
-          ? [...positions.values()].map((p) =>
+          ? (props.livePhysics
+              ? state.current.data.nodes.map((n) => positions.get(n.id)!)
+              : [...positions.values()]
+            ).map((p) =>
               project3D(
                 p,
                 targetPivot,
@@ -255,17 +272,25 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
                 pitch,
               ),
             )
-          : projected.values();
+          : props.livePhysics
+            ? state.current.data.nodes.map((n) => projected.get(n.id)!)
+            : projected.values();
+      let pointCount = 0;
       for (const p of points) {
+        pointCount++;
         minX = Math.min(minX, p.x);
         maxX = Math.max(maxX, p.x);
         minY = Math.min(minY, p.y);
         maxY = Math.max(maxY, p.y);
       }
-      const availableWidth = width - (width > 700 ? 120 : 42);
+      if (!pointCount) return;
+      const viewport = props.livePhysics ? focusViewport() : null;
+      const availableWidth = viewport
+        ? Math.max(48, viewport.right - viewport.left)
+        : width - (width > 700 ? 120 : 42);
       // The overview uses the full canvas. Controls float above it.
-      const topInset = 32;
-      const bottomInset = 32;
+      const topInset = viewport?.top ?? 32;
+      const bottomInset = viewport ? height - viewport.bottom : 32;
       const availableHeight = Math.max(48, height - topInset - bottomInset);
       const nextZoom = Math.max(
         0.025,
@@ -279,7 +304,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         {
           zoom: nextZoom,
           pivot: targetPivot,
-          x: width / 2 - ((minX + maxX) / 2) * nextZoom,
+          x:
+            (viewport ? (viewport.left + viewport.right) / 2 : width / 2) -
+            ((minX + maxX) / 2) * nextZoom,
           y:
             (topInset + height - bottomInset) / 2 -
             ((minY + maxY) / 2) * nextZoom,
@@ -363,6 +390,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       );
     }
     function stopMovement() {
+      autoFrame = false;
       // Finish moving the orbit center without moving the selected point on screen
       // when a new gesture interrupts a focus transition.
       if (spatial && camera && state.current.selected !== null) {
@@ -396,6 +424,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     api.current = {
       retryLayout: () => startLayout(),
       fit: () => {
+        autoFrame = props.livePhysics;
         clearHover();
         yaw = 0.35;
         pitch = -0.2;
@@ -407,6 +436,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         }
       },
       zoom: (factor) => {
+        autoFrame = false;
         const base = camera?.to ?? { zoom, x: panX, y: panY, pivot };
         const next = Math.max(0.025, Math.min(12, base.zoom * factor));
         const x =
@@ -469,6 +499,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         state.current.onLayoutStatus(status);
       };
       canvas.dataset.engine = spatial ? "ngraph" : props.engine;
+      if (props.livePhysics) {
+        setStatus("ready");
+        physics?.dispose();
+        startPhysics();
+        invalidateFrame();
+        return;
+      }
       if (!nodes.length) {
         setStatus("ready");
         return;
@@ -734,8 +771,75 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     canvas.addEventListener("wheel", wheel, { passive: false });
 
     let selection = props.selected;
+    function startPhysics() {
+      try {
+        physics = new LivePhysicsClient(
+          new Map(positions),
+          spatial,
+          props.spacing,
+          (added) => {
+            if (disposed) return;
+            if (!motion.matches && state.current.playing)
+              for (const id of added) births.set(id, performance.now());
+            scene = sceneBounds(positions.values());
+            updateProjection();
+            invalidateFrame();
+          },
+          physicsFailure,
+        );
+        physicsData = state.current.data;
+        physics.sync(physicsData.nodes, physicsData.edges, positions, false);
+      } catch {
+        physicsFailure();
+      }
+    }
+    function physicsFailure() {
+      physics?.dispose();
+      physics = null;
+      if (disposed) return;
+      canvas.dataset.layout = "fallback";
+      canvas.setAttribute("aria-busy", "false");
+      state.current.onLayoutStatus("fallback");
+      invalidateFrame();
+    }
     function draw(now: number) {
       frame = 0;
+      const s = state.current;
+      const running = !!physics && s.playing && !document.hidden;
+      if (!running && physicsRunning) {
+        physics?.pause();
+        camera = null;
+        births.clear();
+      }
+      if (physics && physicsData !== s.data) {
+        physics.sync(s.data.nodes, s.data.edges, positions);
+        physicsData = s.data;
+      }
+      if (physics && running) {
+        physics.advance(physicsRunning ? now - lastFrame : 1000 / 60);
+        if (
+          autoFrame &&
+          !pointers.size &&
+          s.selected === null &&
+          now - lastFit > 500
+        ) {
+          fit(!motion.matches);
+          lastFit = now;
+        }
+        invalidateFrame();
+      }
+      physicsRunning = running;
+      canvas.dataset.physics = physics
+        ? running
+          ? "running"
+          : "paused"
+        : "off";
+      canvas.dataset.physicsTicks = String(physics?.ticks ?? 0);
+      canvas.dataset.physicsSample = JSON.stringify(
+        s.data.nodes
+          .slice(0, 8)
+          .map((n) => ({ id: n.id, ...positions.get(n.id) })),
+      );
       if (spatial && selection !== state.current.selected) {
         selection = state.current.selected;
         if (selection !== null) focusNeighborhood(selection);
@@ -796,7 +900,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       canvas.dataset.animating = String(camera !== null);
       canvas.dataset.zoom = String(zoom);
-      const s = state.current;
       const { neighbors, edgesByKey, clusters } = s;
       const visible = new Set(s.data.nodes.map((n) => n.id));
       const delta = motion.matches
@@ -883,6 +986,23 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      // A short pulse follows newly formed ties, attached to the moving bodies.
+      if (running && !motion.matches) {
+        ctx.strokeStyle = "#4e927b";
+        ctx.lineWidth = 1.2;
+        let pulses = 0;
+        for (const { edge, alpha } of animatedEdges.values()) {
+          if (alpha >= 1 || alpha <= 0 || pulses++ >= 100) continue;
+          const a = point(edge.source),
+            b = point(edge.target);
+          ctx.globalAlpha = Math.sin(alpha * Math.PI) * 0.7;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(a.x + (b.x - a.x) * alpha, a.y + (b.y - a.y) * alpha);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
       if (focus !== null) {
         const focusEdges = (neighbors.get(focus) || []).map((n) =>
           edgesByKey.get(edgeKey(focus, n.id))!,
@@ -944,6 +1064,21 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         if (p.x < -20 || p.y < -20 || p.x > width + 20 || p.y > height + 20)
           continue;
         const special = node.id === s.selected || node.id === s.hovered;
+        const born = births.get(node.id);
+        if (born !== undefined) {
+          const age = (now - born) / 900;
+          if (age >= 1) births.delete(node.id);
+          else {
+            const alpha = ctx.globalAlpha;
+            ctx.globalAlpha *= (1 - age) * 0.55;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r + 3 + age * 17, 0, Math.PI * 2);
+            ctx.strokeStyle = groupInfo(node.group).color;
+            ctx.lineWidth = 1.3;
+            ctx.stroke();
+            ctx.globalAlpha = alpha;
+          }
+        }
         if (emphasized.has(node.id)) {
           ctx.beginPath();
           ctx.arc(
@@ -1108,7 +1243,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ctx.globalAlpha = 1;
       if (animating) invalidateFrame();
       canvas.dataset.animating = String(
-        animating ||
+        running ||
+          animating ||
           camera !== null ||
           (spatial &&
             !motion.matches &&
@@ -1192,6 +1328,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     invalidateFrame();
     return () => {
       disposed = true;
+      previousPositions.current = new Map(positions);
+      physics?.dispose();
       cancelAnimationFrame(frame);
       observer.disconnect();
       worker?.terminate();
@@ -1211,6 +1349,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     props.mode,
     props.spacing,
     props.resolution,
+    props.livePhysics,
   ]);
 
   return (
