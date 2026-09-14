@@ -24,7 +24,8 @@
     "test:timeline": "bun run scripts/timeline-check.ts",
     "test:physics": "bun run scripts/physics-check.ts",
     "test:3d": "bun run scripts/spatial-check.ts",
-    "test:focus": "bun run scripts/focus-check.ts"
+    "test:focus": "bun run scripts/focus-check.ts",
+    "test:search": "bun run scripts/search-check.ts"
   },
   "dependencies": {
     "d3-force": "^3.0.0",

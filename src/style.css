@@ -1978,3 +1978,86 @@ input[type="checkbox"] {
     max-height: min(210px, 28dvh);
   }
 }
+
+.search-kinds {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.search-results .search-kinds button {
+  justify-content: center;
+  padding: 8px;
+  min-height: 36px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.search-kinds button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.search-results [role="option"] > svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.search-results [role="option"] small {
+  max-width: 100px;
+  text-align: right;
+}
+.musician-portrait {
+  margin-bottom: 16px;
+}
+.musician-portrait .musician-avatar {
+  width: 104px;
+  height: 104px;
+  margin: 0 0 6px;
+  font-size: 32px;
+}
+.musician-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  border-radius: inherit;
+  background: #f7f9f3;
+}
+.portrait-source {
+  color: var(--muted);
+  font-size: 10px;
+  text-underline-offset: 3px;
+}
+.ensemble-avatar {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 16px;
+  border-radius: 18px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.ensemble-reveal {
+  margin-bottom: 16px;
+}
+@media (max-width: 700px) {
+  .musician-portrait {
+    float: left;
+    margin: 0 14px 14px 0;
+  }
+  .musician-portrait .musician-avatar {
+    float: none;
+    width: 64px;
+    height: 64px;
+    font-size: 23px;
+  }
+  .ensemble-avatar {
+    float: left;
+    width: 42px;
+    height: 42px;
+    margin: 0 12px 14px 0;
+    border-radius: 12px;
+  }
+}

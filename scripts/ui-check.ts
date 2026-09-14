@@ -39,7 +39,7 @@ const errors: string[] = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const canvas = page.locator(".network-canvas");
 const search = page.getByRole("combobox", {
-  name: "Müzisyen ara",
+  name: "Müzisyen veya grup ara",
   exact: true,
 });
 const ready = () =>

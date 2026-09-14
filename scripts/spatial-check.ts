@@ -17,10 +17,10 @@ const ready = () =>
   expect(canvas).toHaveAttribute("data-layout", "ready", { timeout: 45000 });
 const selectFirst = async () => {
   await page
-    .getByRole("combobox", { name: "Müzisyen ara", exact: true })
+    .getByRole("combobox", { name: "Müzisyen veya grup ara", exact: true })
     .fill("");
   await page
-    .getByRole("combobox", { name: "Müzisyen ara", exact: true })
+    .getByRole("combobox", { name: "Müzisyen veya grup ara", exact: true })
     .focus();
   await page.locator(".search-results [role=option]").first().click();
 };

@@ -46,7 +46,7 @@ try {
   await page.screenshot({ path: ".cache/timeline-desktop.png" });
   const selected = atlas.nodes.find((n) => n.key === "OnderFocan")!;
   const search = page.getByRole("combobox", {
-    name: "Müzisyen ara",
+    name: "Müzisyen veya grup ara",
     exact: true,
   });
   await search.fill(selected.name);

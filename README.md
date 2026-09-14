@@ -118,3 +118,9 @@ bun run data:concerts --build
 ```
 
 Bu işlem kesit tarihini korur ve eksik önbellekte durur.
+
+Arama kutusu müzisyenleri ve konser başlıklarından türetilen grupları birlikte arar. Tümü / Müzisyenler / Gruplar seçenekleri ve Türkçe karakter kullanmadan arama desteklenir. Grup sonuçları seçili tarih ve mekana uyar; konser eşiğinin gizlediği kadro üyeleri panelden görünür hale getirilebilir. Seçili grubun kadrosu haritada vurgulanır ve `g` URL parametresiyle paylaşılır. Kadrodaki bir isme tıklamak müzisyenin bağlantılarını açar.
+
+Seçili müzisyenin portresi Bizim Caz profil görselinden doğrudan yüklenir; fotoğraf bulunamaz veya yüklenemezse baş harfleri gösterilir. Görselin altındaki kaynak bağlantısı müzisyenin profilini açar. Portreler yalnızca seçim yapıldığında istenir; başlangıç veri paketine eklenmez.
+
+`ATLAS_TEST_URL=http://localhost:5173 bun run test:search` masaüstü ve mobil portreleri, fotoğraf hatasından dönüşü, grup aramasını, klavye seçimini, kadrodan müzisyene geçişi, URL geri yüklemeyi ve grup verisi yükleme hatasından dönüşü kontrol eder.
