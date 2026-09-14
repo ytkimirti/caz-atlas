@@ -431,6 +431,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         edges={edges}
         counts={counts}
         ensembles={ensembles}
+        ensembleEdges={venue?.edges ?? concerts.edges}
         showEnsembles={showEnsembles}
         selected={selected}
         hovered={hovered}

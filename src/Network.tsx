@@ -4,6 +4,7 @@ import type { LayoutResponse } from "./layout";
 import type { Atlas, Edge, Ensemble } from "./types";
 import { groupInfo } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
+import { clusterBounds, ensembleClusters } from "./ensembles";
 
 export interface NetworkHandle {
   fit: () => void;
@@ -15,6 +16,7 @@ interface Props {
   edges: Edge[];
   counts: Record<string, number>;
   ensembles: Ensemble[];
+  ensembleEdges: Edge[];
   showEnsembles: boolean;
   selected: number | null;
   hovered: number | null;
@@ -66,14 +68,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         previousPositions.current.get(n.id) ?? { x: n.x, y: n.y },
       ]),
     );
-    const ensembleMembers = props.ensembles
-      .map((ensemble) => ({
-        ensemble,
-        members: Object.keys(ensemble.musicians)
-          .map(Number)
-          .filter((id) => positions.has(id)),
-      }))
-      .filter((item) => item.members.length);
+    const clusters = ensembleClusters(
+      props.ensembles,
+      props.ensembleEdges,
+      new Set(positions.keys()),
+    );
     const neighbors = adjacency(props.data);
     const edgesByKey = new Map(
       props.data.edges.map((e) => [edgeKey(e.source, e.target), e]),
@@ -551,122 +550,52 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       const visibleEnsembles: string[] = [];
       if (s.showEnsembles) {
-        const candidates = ensembleMembers
-          .map(({ ensemble, members }) => {
-            const active = focus !== null && members.includes(focus);
-            const visible = members
-              .map(point)
-              .filter(
-                (p) =>
-                  p.x > 20 && p.x < width - 20 && p.y > 90 && p.y < height - 75,
-              );
-            return { ensemble, members, active, visible };
-          })
-          .filter((item) => item.visible.length >= (item.active ? 1 : 2))
-          .sort(
-            (a, b) =>
-              Number(b.active) - Number(a.active) ||
-              b.ensemble.concerts - a.ensemble.concerts ||
-              a.ensemble.id.localeCompare(b.ensemble.id),
-          )
-          .slice(0, 100);
-        let activeLabels = 0;
-        for (const { ensemble, members, active, visible } of candidates) {
-          if (active && activeLabels >= 3) continue;
-          if (
-            !active &&
-            (visibleEnsembles.length >=
-              (width > 700 ? (zoom < 0.6 ? 4 : 12) : 4) ||
-              visible.length < members.length / 2)
-          )
-            continue;
-          const center = {
-            x: visible.reduce((sum, p) => sum + p.x, 0) / visible.length,
-            y: visible.reduce((sum, p) => sum + p.y, 0) / visible.length,
-          };
+        const labeledMembers = new Set<number>();
+        const markerBounds = nodes.map((node) => {
+          const p = point(node.id);
+          const r = radius(node.id) + 6;
+          return { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2 };
+        });
+        for (const { ensemble, members } of clusters) {
+          if (visibleEnsembles.length >= (width > 700 ? 2 : 1)) break;
+          if (members.some((id) => labeledMembers.has(id))) continue;
+          const bounds = clusterBounds(members, point, width, height);
+          if (!bounds) continue;
           ctx.font =
-            '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+            '500 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
           let name = ensemble.name;
-          const maxWidth = Math.min(230, width - 60);
+          const maxWidth = Math.min(160, width - 60);
           while (ctx.measureText(name).width > maxWidth && name.length > 1)
             name = name.slice(0, -2).trimEnd() + "…";
-          const w = Math.max(110, ctx.measureText(name).width + 24),
-            h = 38;
+          const w = ctx.measureText(name).width + 8,
+            h = 16;
+          const centerX = (bounds.left + bounds.right) / 2;
           const spots = [
-            { x: center.x - w / 2, y: center.y - h / 2 },
-            {
-              x: center.x - w / 2,
-              y: Math.min(...visible.map((p) => p.y)) - h - 22,
-            },
-            {
-              x: center.x - w / 2,
-              y: Math.max(...visible.map((p) => p.y)) + 32,
-            },
-            { x: center.x - w / 2, y: center.y - 70 },
-            { x: center.x - w / 2, y: center.y + 40 },
-          ].map((p) => ({
-            x: Math.max(8, Math.min(width - w - 8, p.x)),
-            y: Math.max(95, Math.min(height - h - 80, p.y)),
-          }));
-          const overlap = (p: { x: number; y: number }) =>
-            occupied.reduce(
-              (sum, b) =>
-                sum +
-                Math.max(0, Math.min(p.x + w, b.x + b.w) - Math.max(p.x, b.x)) *
-                  Math.max(
-                    0,
-                    Math.min(p.y + h, b.y + b.h) - Math.max(p.y, b.y),
-                  ),
-              0,
-            ) +
-            nodes.reduce((sum, node) => {
-              const n = point(node.id);
-              return (
-                sum +
-                (n.x > p.x - 8 &&
-                n.x < p.x + w + 8 &&
-                n.y > p.y - 8 &&
-                n.y < p.y + h + 8
-                  ? 1000
-                  : 0)
-              );
-            }, 0);
-          const best = spots.reduce((a, b) =>
-            overlap(a) <= overlap(b) ? a : b,
+            { x: centerX - w / 2, y: bounds.top - 28 },
+            { x: centerX - w / 2, y: bounds.bottom + 30 },
+          ];
+          // Skip crowded hints instead of displacing them away from the group.
+          const best = spots.find(
+            ({ x, y }) =>
+              x >= 8 &&
+              x + w <= width - 8 &&
+              y >= 90 &&
+              y + h <= height - 75 &&
+              ![...occupied, ...markerBounds].some(
+                (b) =>
+                  x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y,
+              ),
           );
-          if (!active && overlap(best) > 0) continue;
+          if (!best) continue;
           const { x, y } = best;
-          if (active) {
-            ctx.save();
-            ctx.setLineDash([3, 5]);
-            ctx.strokeStyle = "#536c5370";
-            ctx.lineWidth = 0.9;
-            ctx.beginPath();
-            for (const id of members) {
-              const p = point(id);
-              ctx.moveTo(x + w / 2, y + h / 2);
-              ctx.lineTo(p.x, p.y);
-            }
-            ctx.stroke();
-            ctx.restore();
-            activeLabels++;
-          }
           occupied.push({ x: x - 6, y: y - 6, w: w + 12, h: h + 12 });
-          ctx.fillStyle = active ? "#e9eee2" : "#f1f3eb";
+          ctx.fillStyle = "#fafaf6ed";
           ctx.fillRect(x, y, w, h);
-          ctx.strokeStyle = active ? "#809472" : "#c9d1bf";
-          ctx.lineWidth = 0.8;
-          ctx.strokeRect(x, y, w, h);
           ctx.textAlign = "center";
           ctx.fillStyle = "#7b876e";
-          ctx.font =
-            '500 8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-          ctx.fillText("GRUP / PROJE", x + w / 2, y + 12);
-          ctx.fillStyle = active ? "#315434" : "#536c53";
-          ctx.font =
-            '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-          ctx.fillText(name, x + w / 2, y + 28);
+          ctx.fillText(name, x + w / 2, y + 11);
           visibleEnsembles.push(ensemble.name);
+          members.forEach((id) => labeledMembers.add(id));
         }
       }
       canvas.dataset.ensembles = JSON.stringify(visibleEnsembles);
@@ -693,7 +622,14 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.removeEventListener("wheel", wheel);
       invalidate.current = () => {};
     };
-  }, [props.data, props.counts, props.ensembles, props.engine, props.spacing]);
+  }, [
+    props.data,
+    props.counts,
+    props.ensembles,
+    props.ensembleEdges,
+    props.engine,
+    props.spacing,
+  ]);
 
   return (
     <canvas
