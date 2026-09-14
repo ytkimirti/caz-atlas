@@ -28,6 +28,10 @@ const search = page.getByRole("combobox", {
 });
 const ready = () =>
   expect(canvas).toHaveAttribute("data-layout", "ready", { timeout: 45000 });
+async function pressGraphKey(key: string) {
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.keyboard.press(key);
+}
 async function choose(name: string) {
   await search.fill(name);
   await page.locator(".search-results").getByRole("option").first().click();
@@ -113,16 +117,17 @@ try {
     .click();
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
 
-  // Zoom buttons accumulate rapid clicks, ease briefly, then stop rendering.
+  // Keyboard zoom accumulates rapid presses, eases briefly, then stops rendering.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const motion = await page.evaluate(async () => {
     const graph = document.querySelector<HTMLCanvasElement>("canvas")!;
-    const button = document.querySelector<HTMLButtonElement>(
-      '[aria-label="Yakınlaştır"]',
-    )!;
     const before = Number(graph.dataset.zoom);
-    button.click();
-    button.click();
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+    );
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+    );
     const samples: number[] = [];
     const start = performance.now();
     await new Promise<void>((resolve) => {
@@ -139,7 +144,7 @@ try {
   expect(motion.samples.at(-1)!).toBeCloseTo(motion.before * 1.3 ** 2, 5);
   expect(motion.animating).toBe("false");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("0");
   await expect(canvas).toHaveAttribute("data-animating", "false");
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-zoom")))
@@ -287,8 +292,8 @@ try {
   await page.getByLabel("Konser sayısı", { exact: true }).fill("10");
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
   await ready();
-  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("+");
+  await pressGraphKey("0");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(async () => (await canvas.boundingBox())?.width).toBe(390);
@@ -307,8 +312,7 @@ try {
   await expect(page.locator(".selection-panel")).not.toBeVisible();
   await expect(page.locator(".filter-panel")).toBeVisible();
   const bounds = await page.locator(".filter-panel").boundingBox();
-  const zoomBounds = await page.locator(".zoom-controls").boundingBox();
-  expect(bounds!.y + bounds!.height).toBeLessThan(zoomBounds!.y);
+  expect(bounds!.y + bounds!.height).toBeLessThan(844);
   expect(
     await page
       .locator(".filter-panel")
@@ -352,12 +356,9 @@ try {
     touchPoints: [],
   });
   await expect(page.locator(".selection-panel")).toHaveCount(0);
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("0");
 
   await page.setViewportSize({ width: 320, height: 568 });
-  const footer = await page.locator(".graph-footer").boundingBox();
-  const narrowZoom = await page.locator(".zoom-controls").boundingBox();
-  expect(footer!.x + footer!.width).toBeLessThan(narrowZoom!.x);
   await page.screenshot({ path: ".cache/polish-narrow.png" });
 
   await page.setViewportSize({ width: 1512, height: 982 });
@@ -371,9 +372,9 @@ try {
   );
   // The full archive skips canvas animation to keep dense views responsive.
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
+  await pressGraphKey("+");
   await expect(canvas).toHaveAttribute("data-animating", "false");
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("0");
   await page.screenshot({ path: ".cache/minimal-all.png" });
 
   // Recover from a failed dataset request without a page reload.
