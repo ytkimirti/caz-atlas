@@ -239,7 +239,7 @@ try {
   ).toBe(true);
   await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
   await expect(
-    page.locator(".selection-panel .collaborators button span"),
+    page.locator(".selection-panel > .collaborators button span"),
   ).toHaveText(
     ties.map((tie) => data.nodes.find((node) => node.id === tie.id)!.name),
   );
@@ -274,6 +274,16 @@ try {
   expect(hubTies.length).toBeGreaterThan(12);
   await search.fill(hub.name);
   await page.locator(".search-results").getByRole("option").first().hover();
+  await expect
+    .poll(async () =>
+      JSON.parse((await canvas.getAttribute("data-musician-labels"))!).map(
+        (label: { id: number }) => label.id,
+      ),
+    )
+    .toEqual([hub.id]);
+  await expect(canvas).toHaveAttribute("data-focus", "");
+  await checkNames(1, hub.id);
+  await page.locator(".search-results").getByRole("option").first().click();
   await expect(canvas).toHaveAttribute("data-focus", String(hub.id));
   const hubLabels = await checkNames(12, hub.id);
   expect(hubLabels.length).toBeGreaterThan(1);
@@ -283,7 +293,7 @@ try {
     .map((label) => weights.get(label.id)!);
   expect(shownWeights.every((weight) => weight !== undefined)).toBe(true);
   expect(shownWeights).toEqual([...shownWeights].sort((a, b) => b - a));
-  await page.screenshot({ path: ".cache/name-limit-hover.png" });
+  await page.screenshot({ path: ".cache/name-limit-selected.png" });
   await search.press("Escape");
   await search.blur();
 
@@ -330,6 +340,7 @@ try {
   await page.locator(".search-results").getByRole("option").first().hover();
   await expect(page.locator(".path-caption")).toHaveText("En kısa yol · 2 bağ");
   await expect(canvas).toHaveAttribute("data-path", expectedPath.join(","));
+  await expect(canvas).toHaveAttribute("data-focus", String(from.id));
   await checkNames(12);
   await expect(page.locator(".selection-panel h2")).toHaveText("Asude Şaşmaz");
   await page.screenshot({ path: ".cache/minimal-path.png" });
