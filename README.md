@@ -27,7 +27,7 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 - Üst çubuktaki **Görünüm** menüsünün **Yerleşim** alanından Topluluklar (varsayılan), ForceAtlas2, D3 veya ngraph seçilebilir. Topluluklar, sık birlikte çalanlara ayrı alan açar ve ilişkili toplulukları yakına yerleştirir. **Gruplama** ile geniş, dengeli veya ayrıntılı topluluklar seçilebilir. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
 - Üst çubukta arama, filtreler, görünüm ayarları ve enstrüman vurgulaması bulunur. Filtreler ve görünüm ayrı panellerde açılır. İsim ve grup etiketi seçenekleri Görünüm menüsündedir.
 - Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Sağ alttaki + / − ve ekrana sığdır düğmeleri de kullanılabilir. Harita rehberi renkleri ve bağlantıları açıklar; bir enstrümana tıklayarak vurgulama açılabilir. Mobilde detaylar alt panelde, filtreler ise sabit sonuç düğmesi olan kaydırılabilir panelde açılır.
-- **2D / 3D** düğmeleriyle görünümü değiştir. 3D modunda ağı sürükleyerek veya graf odaktayken ok tuşlarıyla döndür; Shift + sürükle veya Shift + ok tuşlarıyla taşı. Kaydırarak yakınlaş; dokunmatik ekranda bir parmakla döndür, iki parmakla taşı ve yakınlaş. **Görünümü sıfırla** veya `0` başlangıç açısına döner ve ağı ekrana sığdırır. Arama, seçim, en kısa yol, enstrüman vurgulama ve zaman çizelgesi iki modda da çalışır. Görünüm URL'de `view=3d` ile saklanır; 2D'ye dönünce önceki yerleşim motoru korunur. 3D yerleşimi ngraph ile Web Worker'da üç eksende hesaplanır; derinlik mesafeleri de coğrafya veya zaman ifade etmez.
+- **2D / 3D** düğmeleriyle görünümü değiştir. 3D modunda ağı sürükleyerek veya graf odaktayken ok tuşlarıyla döndür; Shift + sürükle veya Shift + ok tuşlarıyla taşı. Kaydırarak yakınlaş; dokunmatik ekranda bir parmakla döndür, iki parmakla taşı ve yakınlaş. **Görünümü sıfırla** veya `0` başlangıç açısına döner ve ağı ekrana sığdırır. Arama, seçim, en kısa yol, enstrüman vurgulama ve zaman çizelgesi iki modda da çalışır. 3D modunda bir müzisyene tıklamak veya aramadan seçmek kamerayı onun doğrudan bağlantılarına odaklar; diğer müzisyenler silikleşir. Döndürme seçilen kişinin etrafında yapılır, yakınlaşırken kişi merkezde kalır. Kamera geçişleri yumuşaktır; sürükleme bırakılınca hareket kısa sürede yavaşlar. Azaltılmış hareket tercihinde geçiş ve süzülme kapatılır. Seçimi kaldırmak genel görünüme döner; sıfırlama seçili kişinin ağını yeniden çerçeveler. Görünüm URL'de `view=3d` ile saklanır; 2D'ye dönünce önceki yerleşim motoru korunur. 3D yerleşimi ngraph ile Web Worker'da üç eksende hesaplanır; derinlik mesafeleri de coğrafya veya zaman ifade etmez.
 
 
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
@@ -85,6 +85,7 @@ bun test
 bun run build
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
 ATLAS_TEST_URL=http://localhost:5173 bun run test:3d
+ATLAS_TEST_URL=http://localhost:5173 bun run test:focus
 ATLAS_TEST_URL=http://localhost:5173 bun run test:timeline
 ATLAS_TEST_URL=http://localhost:5173 bun run test:layouts
 ATLAS_TEST_URL=http://localhost:5173 bun run test:communities

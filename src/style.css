@@ -1926,3 +1926,10 @@ input[type="checkbox"] {
     display: inline;
   }
 }
+
+@media (max-width: 700px) {
+  .atlas:has(.network-canvas[data-mode="3d"]) .selection-panel {
+    bottom: calc(var(--timeline-height) + 12px);
+    max-height: min(210px, 28dvh);
+  }
+}

@@ -88,3 +88,13 @@ test("all orbit angles keep projection finite and in front of the camera", () =>
   for (const value of [null, "2d", "invalid"])
     expect(parseViewMode(value)).toBe("2d");
 });
+
+test("a musician's pivot stays fixed through every orbit angle", () => {
+  const point = { x: 180, y: -240, z: 90 };
+  for (let yaw = -Math.PI; yaw <= Math.PI; yaw += 0.3) {
+    const p = project3D(point, point, 400, yaw, yaw / 2);
+    expect(p.x).toBeCloseTo(0);
+    expect(p.y).toBeCloseTo(0);
+    expect(p.scale).toBe(1);
+  }
+});

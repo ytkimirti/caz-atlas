@@ -46,7 +46,7 @@ try {
   await page.mouse.move(930, 590, { steps: 12 });
   await page.mouse.up();
   await expect(canvas).not.toHaveAttribute("data-rotation", initialRotation!);
-  await expect(canvas).not.toHaveAttribute(
+  await expect(canvas).toHaveAttribute(
     "data-selected-position",
     initialPosition!,
   );
@@ -82,7 +82,6 @@ try {
   const point = (await canvas.getAttribute("data-selected-position"))!
     .split(",")
     .map(Number);
-  await page.keyboard.press("Escape");
   await page.mouse.click(point[0], point[1]);
   await expect(canvas).toHaveAttribute("data-focus", selected!);
   await page.screenshot({ path: ".cache/spatial-desktop.png" });

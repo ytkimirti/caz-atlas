@@ -519,7 +519,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   }
   function pick(id: number) {
     setSelectedId(id);
-    network.current?.focus(id);
+    if (mode === "2d" || selectedId === id) network.current?.focus(id);
   }
 
   return (
@@ -585,7 +585,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         <p id="spatial-help" className="sr-only">
           Sürükleyerek veya ok tuşlarıyla döndür. Shift ile taşı. Kaydırarak
           yakınlaş. Dokunmatik ekranda tek parmakla döndür, iki parmakla taşı ve
-          yakınlaş.
+          yakınlaş. Seçilen müzisyenin etrafında döndürülür ve onun ağına
+          odaklanılır.
         </p>
       )}
       <header className="app-header">
@@ -757,10 +758,11 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
                 <span className="spatial-desktop-help">
                   Sürükleyerek döndür. Shift + sürükle ile taşı. Kaydırarak
                   yakınlaş. Graf odaktayken ok tuşlarıyla döndür, Shift + ok
-                  tuşlarıyla taşı.
+                  tuşlarıyla taşı. Bir müzisyen seçince onun ağına odaklanırsın.
                 </span>
                 <span className="spatial-touch-help">
-                  Tek parmakla döndür. İki parmakla taşı ve yakınlaş.
+                  Tek parmakla döndür. İki parmakla taşı ve yakınlaş. Bir
+                  müzisyene dokunarak ağına odaklan.
                 </span>
               </p>
             </>
