@@ -11,6 +11,7 @@
     "data:build": "bun run scripts/prepare.ts",
     "test": "bun test tests/unit",
     "test:ui": "bun run scripts/ui-check.ts",
+    "test:progress": "bun run scripts/progress-check.ts",
     "test:layouts": "bun run scripts/layout-check.ts",
     "benchmark:layouts": "bun run scripts/layout-benchmark.ts",
     "data:validate": "bun run scripts/validate.ts",

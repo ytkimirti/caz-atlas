@@ -7,6 +7,7 @@ import { adjacency, edgeKey, pathEdges } from "./graph";
 import { clusterBounds, ensembleClusters } from "./ensembles";
 
 export interface NetworkHandle {
+  retryLayout: () => void;
   fit: () => void;
   zoom: (factor: number) => void;
   focus: (id: number) => void;
@@ -34,12 +35,18 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   const previousPositions = useRef(new Map<number, { x: number; y: number }>());
   const state = useRef(props);
   state.current = props;
-  const api = useRef<NetworkHandle>({ fit() {}, zoom() {}, focus() {} });
+  const api = useRef<NetworkHandle>({
+    fit() {},
+    zoom() {},
+    focus() {},
+    retryLayout() {},
+  });
   const invalidate = useRef(() => {});
   useImperativeHandle(
     ref,
     () => ({
       fit: () => api.current.fit(),
+      retryLayout: () => api.current.retryLayout(),
       zoom: (factor) => api.current.zoom(factor),
       focus: (id) => api.current.focus(id),
     }),
@@ -182,6 +189,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       clearHover();
     }
     api.current = {
+      retryLayout: () => startLayout(),
       fit: () => {
         clearHover();
         fit(true);
@@ -225,43 +233,75 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       fit();
     });
     observer.observe(canvas);
-    const worker = new Worker(new URL("./layout.worker.ts", import.meta.url), {
-      type: "module",
-    });
-    canvas.dataset.layout = "pending";
-    canvas.dataset.engine = props.engine;
-    props.onLayoutStatus("pending");
-    const fallback = () => {
-      if (disposed) return;
-      for (const n of nodes) positions.set(n.id, { x: n.x, y: n.y });
-      canvas.dataset.layout = "fallback";
-      state.current.onLayoutStatus("fallback");
-      worker.terminate();
-      fit();
-    };
-    worker.onmessage = (event: MessageEvent<LayoutResponse>) => {
-      if (disposed) return;
-      if (event.data.status === "fallback") {
-        fallback();
+    let worker: Worker | null = null;
+    let generation = 0;
+    function startLayout() {
+      const currentGeneration = ++generation;
+      worker?.terminate();
+      worker = null;
+      const setStatus = (status: LayoutStatus) => {
+        canvas.dataset.layout = status;
+        canvas.setAttribute("aria-busy", String(status === "pending"));
+        state.current.onLayoutStatus(status);
+      };
+      canvas.dataset.engine = props.engine;
+      if (!nodes.length) {
+        setStatus("ready");
         return;
       }
-      for (const node of event.data.positions)
-        positions.set(node.id, { x: node.x, y: node.y });
-      previousPositions.current = new Map(positions);
-      canvas.dataset.layout = "ready";
-      state.current.onLayoutStatus("ready");
-      worker.terminate();
-      fit();
-      if (state.current.selected !== null)
-        api.current.focus(state.current.selected);
-    };
-    worker.onerror = fallback;
-    worker.postMessage({
-      nodes: nodes.map((n) => ({ id: n.id, count: props.counts[n.id] || 0 })),
-      edges: props.data.edges,
-      engine: props.engine,
-      spacing: props.spacing,
-    });
+      setStatus("pending");
+      let settled = false;
+      const active = () =>
+        !disposed && !settled && generation === currentGeneration;
+      const fallback = () => {
+        if (!active()) return;
+        settled = true;
+        worker?.terminate();
+        worker = null;
+        // Keep the currently visible positions and camera, including cached layouts.
+        setStatus("fallback");
+        invalidateFrame();
+      };
+      try {
+        worker = new Worker(new URL("./layout.worker.ts", import.meta.url), {
+          type: "module",
+        });
+        worker.onmessage = (event: MessageEvent<LayoutResponse>) => {
+          if (!active()) return;
+          if (event.data.status === "fallback") {
+            fallback();
+            return;
+          }
+          for (const node of event.data.positions)
+            positions.set(node.id, { x: node.x, y: node.y });
+          previousPositions.current = new Map(positions);
+          settled = true;
+          worker?.terminate();
+          worker = null;
+          setStatus("ready");
+          fit();
+          if (state.current.selected !== null)
+            api.current.focus(state.current.selected);
+        };
+        worker.onerror = (event) => {
+          event.preventDefault();
+          fallback();
+        };
+        worker.onmessageerror = fallback;
+        worker.postMessage({
+          nodes: nodes.map((n) => ({
+            id: n.id,
+            count: props.counts[n.id] || 0,
+          })),
+          edges: props.data.edges,
+          engine: props.engine,
+          spacing: props.spacing,
+        });
+      } catch {
+        fallback();
+      }
+    }
+    startLayout();
     void document.fonts.ready.then(invalidateFrame);
 
     function hit(x: number, y: number) {
@@ -625,7 +665,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
-      worker.terminate();
+      worker?.terminate();
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);

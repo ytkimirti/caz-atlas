@@ -244,6 +244,8 @@ export default function App() {
   return <AtlasApp data={data.atlas} concerts={data.concerts} />;
 }
 
+const EMPTY_ENSEMBLES: NonNullable<ConcertIndex["ensembles"]> = [];
+
 function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialMin = Number(params.get("min") ?? 10);
@@ -289,7 +291,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     [concerts, venueId],
   );
   const counts = venue?.musicians ?? concerts.counts;
-  const ensembles = venue?.ensembles ?? concerts.ensembles ?? [];
+  const ensembles = venue?.ensembles ?? concerts.ensembles ?? EMPTY_ENSEMBLES;
   const musicianEnsembles = useMemo(
     () =>
       ensembles
@@ -419,8 +421,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
 
   return (
     <main className="atlas">
-      {layoutStatus === "pending" && (
-        <div className="layout-loading">
+      <div className="layout-loading" data-state={layoutStatus}>
+        {layoutStatus === "pending" && (
           <div
             className="layout-loading-track"
             role="progressbar"
@@ -428,9 +430,29 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           >
             <span />
           </div>
-          <span className="layout-loading-label">Yerleşim hesaplanıyor…</span>
+        )}
+        <div
+          className={
+            layoutStatus === "ready" ? "sr-only" : "layout-loading-label"
+          }
+        >
+          <span role="status" aria-live="polite" aria-atomic="true">
+            {layoutStatus === "pending"
+              ? "Yerleşim hesaplanıyor…"
+              : layoutStatus === "fallback"
+                ? "Yerleşim hesaplanamadı. Mevcut görünüm korunuyor."
+                : "Yerleşim hazır"}
+          </span>
+          {layoutStatus === "fallback" && (
+            <button
+              className="layout-retry"
+              onClick={() => network.current?.retryLayout()}
+            >
+              Tekrar hesapla
+            </button>
+          )}
         </div>
-      )}
+      </div>
       <Network
         ref={network}
         data={graph}
@@ -480,11 +502,11 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             ))}
           </select>
         </div>
-        <p className="layout-feedback" role="status">
+        <p className="layout-feedback">
           {layoutStatus === "pending"
             ? "Yerleşim hesaplanıyor…"
             : layoutStatus === "fallback"
-              ? "Yerleşim hesaplanamadı. Arşiv konumları gösteriliyor; başka bir yerleşim seçebilirsin."
+              ? "Yerleşim hesaplanamadı. Tekrar deneyebilir veya başka bir yerleşim seçebilirsin."
               : "Yerleşim hazır"}
         </p>
       </div>

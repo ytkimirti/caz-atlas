@@ -30,7 +30,7 @@ The old strongest-three layout heuristic could also discard weak bridges between
 ## Implementation choices
 
 - All computation runs in a terminable Web Worker. Switching engine, spacing or filters cancels obsolete work; selection and hover changes do not restart it.
-- Previous positions stay visible while a replacement layout computes. A failed worker shows archive positions and a visible recovery message.
+- Previous positions stay visible while a replacement layout computes. A failed worker preserves the displayed positions and shows an accessible recovery message with a retry action, including when mobile panels are open.
 - `engine` and `spacing` persist in the URL. Unknown values fall back to validated defaults.
 - Components are normalized by population and typical radius. Very long radial tails are logarithmically compressed before collision relaxation so outliers have less influence on fit.
 - Disconnected components and isolated musicians are packed into separate boxes. Communities mode uses the same packing for detected groups.

@@ -48,16 +48,18 @@ try {
   await page.addInitScript(() => {
     window.Worker = class extends EventTarget {
       onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: (() => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
       postMessage() {
-        setTimeout(() => this.onerror?.(), 0);
+        setTimeout(() => this.onerror?.(new ErrorEvent("error")), 0);
       }
       terminate() {}
     } as unknown as typeof Worker;
   });
   await page.reload();
   await expect(canvas).toHaveAttribute("data-layout", "fallback");
-  await expect(page.getByRole("status")).toContainText("Arşiv konumları");
+  await expect(page.getByRole("status")).toContainText(
+    "Mevcut görünüm korunuyor",
+  );
   await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
   expect(errors).toEqual([]);
   console.log(
