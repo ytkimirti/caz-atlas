@@ -19,6 +19,8 @@ beforeEach(async () => {
   for (const file of [
     "scripts/prepare.ts",
     "scripts/archive.ts",
+    "scripts/prepare-runtime.ts",
+    "src/runtime-data.ts",
     "src/graph.ts",
     "src/types.ts",
   ])
@@ -38,6 +40,8 @@ beforeEach(async () => {
     }),
   );
   await Bun.write(join(root, "public/data/atlas.json"), "original atlas");
+  await Bun.write(join(root, "public/data/runtime.json"), "original runtime");
+  await Bun.write(join(root, "public/data/projects.json"), "original projects");
   await Bun.write(
     join(root, "data/source-networks.ndjson.gz"),
     "original archive",
@@ -69,6 +73,7 @@ test("snapshot writers require explicit flags even with a usable cache", async (
   for (const [script, flag] of [
     ["prepare.ts", "--build"],
     ["archive.ts", "--archive"],
+    ["prepare-runtime.ts", "--build"],
   ]) {
     const result = await run(script);
     expect(result.code).toBe(0);
@@ -76,6 +81,12 @@ test("snapshot writers require explicit flags even with a usable cache", async (
   }
   expect(await Bun.file(join(root, "public/data/atlas.json")).text()).toBe(
     "original atlas",
+  );
+  expect(await Bun.file(join(root, "public/data/runtime.json")).text()).toBe(
+    "original runtime",
+  );
+  expect(await Bun.file(join(root, "public/data/projects.json")).text()).toBe(
+    "original projects",
   );
   expect(
     await Bun.file(join(root, "data/source-networks.ndjson.gz")).text(),

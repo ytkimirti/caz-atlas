@@ -8,3 +8,5 @@ dist/
 *.tsbuildinfo
 test-results/
 playwright-report/
+public/data/runtime.json
+public/data/projects.json

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Network from "./Network";
 import Timeline from "./Timeline";
+import { useSettingsPanel } from "./useSettingsPanel";
 import {
   concertHistogram,
   concertEnsembles,
@@ -38,7 +39,9 @@ import {
 } from "./layout-options";
 import type { LayoutStatus } from "./layout-options";
 import type { NetworkHandle } from "./Network";
-import type { Atlas, ConcertIndex, Musician } from "./types";
+import type { Ensemble, GraphMusician } from "./types";
+import { unpackRuntime } from "./runtime-data";
+import type { ProjectData, RuntimeData } from "./runtime-data";
 import { groupInfo, groups, normalize, number } from "./types";
 import {
   adjacency,
@@ -53,7 +56,7 @@ function MusicianSearch({
   onHover,
   selected,
 }: {
-  nodes: Musician[];
+  nodes: GraphMusician[];
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
   selected: number | null;
@@ -220,10 +223,7 @@ function MusicianSearch({
 }
 
 export default function App() {
-  const [data, setData] = useState<{
-    atlas: Atlas;
-    concerts: ConcertIndex;
-  } | null>(null);
+  const [data, setData] = useState<RuntimeData | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -234,8 +234,9 @@ export default function App() {
       if (!response.ok) throw new Error("Graf verisi yüklenemedi.");
       return response.json();
     };
-    Promise.all([read("/data/atlas.json"), read("/data/concerts.json")])
-      .then(([atlas, concerts]) => setData({ atlas, concerts }))
+    read("/data/runtime.json")
+      .then(unpackRuntime)
+      .then(setData)
       .catch((e) => {
         if (e.name !== "AbortError")
           setError("Graf verisi yüklenemedi. Tekrar deneyebilirsin.");
@@ -266,12 +267,18 @@ export default function App() {
         )}
       </main>
     );
-  return <AtlasApp data={data.atlas} concerts={data.concerts} />;
+  return <AtlasApp data={data} concerts={data.concerts} />;
 }
 
-const EMPTY_ENSEMBLES: NonNullable<ConcertIndex["ensembles"]> = [];
+const EMPTY_ENSEMBLES: Ensemble[] = [];
 
-function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
+function AtlasApp({
+  data,
+  concerts,
+}: {
+  data: RuntimeData;
+  concerts: RuntimeData["concerts"];
+}) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const bounds = useMemo<DateRange>(() => {
     const events = concerts.timeline;
@@ -342,9 +349,13 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     setLayoutStatus(status);
     if (status === "fallback") setPlaying(false);
   }, []);
+  const [projects, setProjects] = useState<ProjectData | null>(null);
+  const [projectError, setProjectError] = useState(false);
+  const [projectAttempt, setProjectAttempt] = useState(0);
   const [labels, setLabels] = useState(true);
   const [showEnsembles, setShowEnsembles] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  useSettingsPanel(filtersOpen ? "filters" : viewOpen ? "view-settings" : null);
   const [venueQuery, setVenueQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(
     data.nodes.find((n) => n.key === params.get("m"))?.id ?? null,
@@ -388,18 +399,30 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     [concerts, range, minConcerts, venueId],
   );
   const allDates = range[0] === bounds[0] && cursor === bounds[1];
+  const knownEnsembles = projects?.ensembles ?? EMPTY_ENSEMBLES;
   const ensembles = useMemo(
     () =>
       allDates
-        ? (venue?.ensembles ?? concerts.ensembles ?? EMPTY_ENSEMBLES)
+        ? venue
+          ? (projects?.venues[venue.id] ?? EMPTY_ENSEMBLES)
+          : knownEnsembles
         : concertEnsembles(
             concerts.timeline,
-            concerts.ensembles,
+            knownEnsembles,
             range[0],
             cursor,
             venueId,
           ),
-    [allDates, venue, concerts, range[0], cursor, venueId],
+    [
+      allDates,
+      venue,
+      concerts,
+      range[0],
+      cursor,
+      venueId,
+      projects,
+      knownEnsembles,
+    ],
   );
   const musicianEnsembles = useMemo(
     () =>
@@ -429,6 +452,23 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     selectedId !== null && visibleIds.has(selectedId) ? selectedId : null;
   const hovered =
     hoveredId !== null && visibleIds.has(hoveredId) ? hoveredId : null;
+  const loadProjects =
+    selected !== null || (showEnsembles && layoutStatus !== "pending");
+  useEffect(() => {
+    if (!loadProjects || projects) return;
+    const controller = new AbortController();
+    setProjectError(false);
+    fetch("/data/projects.json", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Project data unavailable");
+        return response.json() as Promise<ProjectData>;
+      })
+      .then(setProjects)
+      .catch((error) => {
+        if (error.name !== "AbortError") setProjectError(true);
+      });
+    return () => controller.abort();
+  }, [loadProjects, projects, projectAttempt]);
   useEffect(() => {
     if (selectedId !== selected) setSelectedId(selected);
   }, [selected, selectedId]);
@@ -520,11 +560,13 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         document.getElementById("main-search")?.focus();
       }
       if (e.key === "Escape") {
-        setFiltersOpen(false);
-        setViewOpen(false);
-        setLegendOpen(false);
-        setSelectedId(null);
-        setHoveredId(null);
+        if (filtersOpen) setFiltersOpen(false);
+        else if (viewOpen) setViewOpen(false);
+        else if (legendOpen) setLegendOpen(false);
+        else {
+          setSelectedId(null);
+          setHoveredId(null);
+        }
       }
       if ((e.target as HTMLElement).matches("input, select, textarea, button"))
         return;
@@ -534,7 +576,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, []);
+  }, [filtersOpen, viewOpen, legendOpen]);
   function resetFilters() {
     changeRange([...bounds]);
     setMinConcerts(null);
@@ -813,6 +855,14 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             />
             Grup / proje adlarını göster
           </label>
+          {projectError && (
+            <button
+              className="text-button"
+              onClick={() => setProjectAttempt((n) => n + 1)}
+            >
+              Grup bilgilerini tekrar yükle
+            </button>
+          )}
           <p className="layout-feedback">
             {layoutStatus === "pending"
               ? "Yerleşim hesaplanıyor…"
@@ -1176,6 +1226,20 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             ))}
             {!collaborators.length && <p>Bu filtrelerde bağlantısı yok.</p>}
           </div>
+          {!projects && (
+            <p className="field-note" aria-live="polite">
+              {projectError ? (
+                <button
+                  className="text-button"
+                  onClick={() => setProjectAttempt((n) => n + 1)}
+                >
+                  Grup bilgileri yüklenemedi. Tekrar dene
+                </button>
+              ) : (
+                "Grup bilgileri yükleniyor…"
+              )}
+            </p>
+          )}
           {musicianEnsembles.length > 0 && (
             <div className="musician-ensembles">
               <span className="section-caption">GRUP / PROJE</span>

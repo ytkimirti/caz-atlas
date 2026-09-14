@@ -63,8 +63,9 @@ await page.addInitScript(() => {
 });
 const progress = page.getByRole("progressbar", {
   name: "Yerleşim hesaplanıyor",
+  includeHidden: true,
 });
-const status = page.getByRole("status");
+const status = page.getByRole("status", { includeHidden: true });
 const canvas = page.locator("canvas");
 const complete = () =>
   page.evaluate(() => {
@@ -119,6 +120,7 @@ try {
   await expect(status).toBeVisible();
   await expect(status).toContainText("Mevcut görünüm korunuyor");
   await page.screenshot({ path: ".cache/progress-mobile-failure.png" });
+  await page.getByRole("button", { name: "Filtreleri kapat" }).click();
   await page.getByRole("button", { name: "Tekrar hesapla" }).click();
   await expect(progress).toBeVisible();
   // A late result from the failed job must not settle the retry.
@@ -132,7 +134,6 @@ try {
   await expect(canvas).toHaveAttribute("data-layout", "pending");
   await complete();
   await ready();
-  await page.getByRole("button", { name: "Filtreleri kapat" }).click();
   const search = page.getByRole("combobox", {
     name: "Müzisyen ara",
     exact: true,
@@ -158,6 +159,7 @@ try {
   await fail();
   await expect(status).toBeVisible();
   await expect(canvas).toHaveAttribute("data-selected-position", before!);
+  await page.getByRole("button", { name: "Görünümü kapat" }).click();
   await page.getByRole("button", { name: "Tekrar hesapla" }).click();
   await complete();
   await ready();
