@@ -227,7 +227,7 @@ export default function App() {
     return (
       <main className="loading-screen">
         <span className="wordmark">
-          caz<span>graf</span>
+          caz<span>-atlas</span>
         </span>
         {!error && (
           <div className="loading-mark" aria-hidden="true">
@@ -575,7 +575,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       </div>
       <div className="identity">
         <h1 className="wordmark">
-          caz<span>graf</span>
+          caz<span>-atlas</span>
           <i />
         </h1>
         <p>Kim, kiminle çalıyor?</p>
