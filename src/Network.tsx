@@ -25,6 +25,7 @@ interface Props {
   labels: boolean;
   engine: LayoutEngine;
   spacing: number;
+  resolution: number;
   onLayoutStatus: (status: LayoutStatus) => void;
   onSelect: (id: number | null) => void;
   onHover: (id: number | null) => void;
@@ -296,6 +297,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           edges: props.data.edges,
           engine: props.engine,
           spacing: props.spacing,
+          resolution: props.resolution,
         });
       } catch {
         fallback();
@@ -681,6 +683,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     props.ensembleEdges,
     props.engine,
     props.spacing,
+    props.resolution,
   ]);
 
   return (

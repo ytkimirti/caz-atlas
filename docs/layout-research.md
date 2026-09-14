@@ -4,9 +4,9 @@ Investigated 14 September 2026 against the checked-in concert graph.
 
 ## Recommendation
 
-Use **Topluluklar** (Communities) as the default. Detect groups of frequent collaborators with Louvain, run D3 inside each group, and pack groups into separate areas. Keep **ForceAtlas2**, **D3**, and **ngraph** available for comparison. There is no universal best force engine for this dataset: global springs still tend to put a densely connected network in one central mass.
+Use **Topluluklar** (Communities) as the default. Detect groups of frequent collaborators with Louvain, run D3 inside each group, then position communities with weighted springs between groups and size-aware collision spacing. Keep **ForceAtlas2**, **D3**, and **ngraph** available for comparison. There is no universal best force engine for this dataset: global springs still tend to put a densely connected network in one central mass.
 
-Communities are computed from the full filtered concert graph using log-compressed edge weights, deterministic traversal and resolution 1.5. They are layout aids, not verified bands, genres or social categories. Node colors still represent instruments. Positions of separate groups are determined by packing, so distance between groups does not measure relationship strength. Cross-group edges and shortest paths remain available.
+Communities are computed from the full filtered concert graph using log-compressed edge weights, deterministic traversal and a selectable resolution: 0.8 (broad), 1.5 (balanced), or 3 (detailed). They are layout aids, not verified bands, genres or social categories. Node colors still represent instruments. Cross-community collaboration weights influence positioning. Group size and collision spacing also affect distance, so it is not a quantitative relationship-strength scale. Disconnected networks are packed separately with no inferred relationship. Cross-group edges and shortest paths remain available.
 
 ## Candidates and sources
 
@@ -31,36 +31,41 @@ The old strongest-three layout heuristic could also discard weak bridges between
 
 - All computation runs in a terminable Web Worker. Switching engine, spacing or filters cancels obsolete work; selection and hover changes do not restart it.
 - Previous positions stay visible while a replacement layout computes. A failed worker preserves the displayed positions and shows an accessible recovery message with a retry action, including when mobile panels are open.
-- `engine` and `spacing` persist in the URL. Unknown values fall back to validated defaults.
-- Components are normalized by population and typical radius. Very long radial tails are logarithmically compressed before collision relaxation so outliers have less influence on fit.
-- Disconnected components and isolated musicians are packed into separate boxes. Communities mode uses the same packing for detected groups.
-- The three spacing choices change repulsion, collision clearance and box padding, rather than just multiplying every coordinate. Fitting can still offset part of the apparent spacing change.
+- `engine`, `spacing`, and `resolution` persist in the URL. Unknown values fall back to validated defaults.
+- Global D3, ForceAtlas2 and ngraph layouts normalize components by population and typical radius, compressing long radial tails. Communities mode uses its own compact local simulations and preserves the final geometry without radial compression.
+- Communities are split into connected parts using the full induced graph. Internal springs are sparsified only after this split, so a weak internal bridge cannot be lost through an external path.
+- Community-level springs aggregate all cross-group edges with log-compressed weights. Local circles include actual member extents, count-dependent clearance and padding. A final collision-only pass is followed by uniform center expansion if any circle intersection remains.
+- Disconnected sets of communities are enclosed and arranged with [D3 circle packing](https://d3js.org/d3-hierarchy/pack#packSiblings). Packing translates each disconnected set without changing its internal pairwise distances. The other engines retain component boxes.
+- The three spacing choices change repulsion, collision clearance and group padding, rather than just multiplying every coordinate. Fitting can still offset part of the apparent spacing change.
 - Canvas coordinates keep the same scale on both axes, including mobile. At wide zoom, markers may shrink to 0.75 pixels instead of the previous 2-pixel minimum; the 7-pixel minimum hit target remains. Collision clearance also grows more strongly with concert count. Both changes matter for overlap reduction.
 
 ## Validation and limitations
 
 Tests cover deterministic finite positions, input immutability, empty and isolated graphs, weak bridges, increasing spacing, URL validation, all engines on the full archive, cancellation, failure recovery, search, paths, filters and mobile controls.
 
-The read-only benchmark reproduces the original worker and measures the same 1512 × 982 fit viewport, including the original horizontal stretch. Its central region is the middle 40% of each viewport dimension. This metric measures the specific crowded-center complaint; it does not measure community correctness or total layout quality. It also reports intersecting marker pairs and the fullest 100 × 100 pixel bin so local crowding remains visible.
+The current default filter contains 1,427 musicians. Measurements on the checked-in dataset show that the detail selector changes the actual partition:
 
-In the default 1,427-person view, the original layout placed 848 musicians in the central region; Communities placed 364. Both had zero intersecting marker pairs. The fullest bin increased from 60 to 85: the improvement is separation into groups, not uniformly lower density everywhere.
+| Grouping       | Communities with multiple musicians | Largest community |
+| -------------- | ----------------------------------: | ----------------: |
+| Broad (0.8)    |                                  23 |               442 |
+| Balanced (1.5) |                                  29 |               175 |
+| Detailed (3)   |                                  63 |               131 |
 
-| View                           | Original central nodes | Communities central nodes | Original overlapping marker pairs | Communities overlapping marker pairs |
-| ------------------------------ | ---------------------: | ------------------------: | --------------------------------: | -----------------------------------: |
-| Default, 1,427 musicians       |                    848 |                       364 |                                 0 |                                    0 |
-| Full archive, 14,714 musicians |                  8,287 |                     4,140 |                             1,801 |                                    0 |
+The full 14,714-person archive produces 3,396 communities at the balanced setting, including 2,790 isolates. On this machine, the community calculation took around 2 seconds for the default view and 14–17 seconds for the full archive in Bun. Timing depends on the runtime and hardware; simulations use bounded iterations, not a convergence guarantee.
 
-The overlap comparison includes the new marker sizing and collision clearance, not just engine selection. It excludes emphasized markers and labels and does not promise zero overlap at every viewport size or zoom level.
+Regression fixtures verify distinct connected communities, preferential proximity along a planted chain, nonintersecting group circles, stable geometry when disconnected networks are packed, deterministic output at each resolution, and unmodified input relationships. Browser checks exercise all grouping levels, URL restoration, mobile controls and the complete archive. Changing grouping does not change the number of rendered relationships or the shared-concert filter.
 
-In one local Chrome run, default views became ready in about 2.5–3 seconds and full-archive views in about 13–18 seconds, including data loading. These are observations from this machine, not performance guarantees. Bun and browser timings differed substantially, especially for ForceAtlas2. All algorithms use bounded iterations rather than claiming full convergence.
+The read-only `benchmark:layouts` command still compares the original force layout with the current implementation at a 1512 × 982 viewport. Its central-density metric is not a community-quality measure: a meaningful arrangement can place well-separated groups in the middle of the screen. Circle separation and preservation of relationships are the relevant checks for this revision.
 
 The full archive still requires zoom or filters to inspect dense groups. Changing filters can change community membership and reposition groups. Labels are not part of the physics collision radius; the existing renderer limits ordinary labels and prioritizes selected paths.
 
 ```sh
 bun test tests/unit
 bun run build
-ATLAS_TEST_URL=http://localhost:18894 bun run test:ui
-ATLAS_TEST_URL=http://localhost:18894 bun run test:layouts
+ATLAS_TEST_URL=http://localhost:18884 bun run test:ui
+ATLAS_TEST_URL=http://localhost:18884 bun run test:layouts
+ATLAS_TEST_URL=http://localhost:18884 bun run test:communities
+ATLAS_TEST_URL=http://localhost:18884 bun run test:progress
 bun run benchmark:layouts
 bun run benchmark:layouts --all --engine=communities
 ```

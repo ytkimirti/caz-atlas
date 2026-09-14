@@ -6,7 +6,9 @@ import {
   forceSimulation,
 } from "d3-force";
 import { UndirectedGraph } from "graphology";
-import louvain from "graphology-communities-louvain";
+import { computeCommunityLayout } from "./community-layout";
+import { layoutLinks } from "./layout-links";
+export { layoutLinks } from "./layout-links";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import createGraph from "ngraph.graph";
 import createLayout from "ngraph.forcelayout";
@@ -27,47 +29,11 @@ export interface LayoutRequest {
   edges: Edge[];
   engine: LayoutEngine;
   spacing: number;
+  resolution?: number;
 }
 export type LayoutResponse =
   { status: "ready"; positions: Position[] } | { status: "fallback" };
 type Particle = LayoutNode & Position & { vx?: number; vy?: number };
-
-// Retain each person's strongest ties and a maximum spanning forest. Weak
-// bridges still connect communities, without thousands of springs into hubs.
-export function layoutLinks(nodes: LayoutNode[], edges: Edge[]): Edge[] {
-  const parent = new Map(nodes.map((n) => [n.id, n.id]));
-  const root = (id: number): number => {
-    let current = id;
-    while (parent.get(current) !== current) current = parent.get(current)!;
-    while (id !== current) {
-      const next = parent.get(id)!;
-      parent.set(id, current);
-      id = next;
-    }
-    return current;
-  };
-  const degree = new Map<number, number>();
-  return [...edges]
-    .filter(
-      (e) =>
-        e.source !== e.target && parent.has(e.source) && parent.has(e.target),
-    )
-    .sort(
-      (a, b) =>
-        b.weight - a.weight || a.source - b.source || a.target - b.target,
-    )
-    .filter((e) => {
-      const a = degree.get(e.source) ?? 0,
-        b = degree.get(e.target) ?? 0;
-      degree.set(e.source, a + 1);
-      degree.set(e.target, b + 1);
-      const ra = root(e.source),
-        rb = root(e.target);
-      if (ra !== rb) parent.set(ra, rb);
-      return a < 3 || b < 3 || ra !== rb;
-    })
-    .map((e) => ({ ...e }));
-}
 
 function simulate(
   nodes: Particle[],
@@ -77,7 +43,7 @@ function simulate(
 ) {
   if (nodes.length < 2) return;
   const iterations = nodes.length > 5000 ? 200 : 320;
-  if (engine === "d3" || engine === "communities") {
+  if (engine === "d3") {
     const simulation = forceSimulation(nodes)
       .force(
         "link",
@@ -180,6 +146,8 @@ function simulate(
 
 export function computeLayout(request: LayoutRequest): Position[] {
   const { engine, spacing } = request;
+  if (engine === "communities")
+    return computeCommunityLayout(request).positions;
   const nodes: Particle[] = [...request.nodes]
     .sort((a, b) => b.count - a.count || a.id - b.id)
     .map((n, i) => ({
@@ -196,7 +164,7 @@ export function computeLayout(request: LayoutRequest): Position[] {
     neighbors.get(e.target)!.push(e.source);
   }
   const componentOf = new Map<number, number>();
-  let components: { nodes: Particle[]; edges: Edge[] }[] = [];
+  const components: { nodes: Particle[]; edges: Edge[] }[] = [];
   for (const n of nodes) {
     if (componentOf.has(n.id)) continue;
     const index = components.length;
@@ -212,28 +180,6 @@ export function computeLayout(request: LayoutRequest): Position[] {
     components.push({ nodes: ids.map((id) => byId.get(id)!), edges: [] });
   }
   for (const e of edges) components[componentOf.get(e.source)!].edges.push(e);
-  if (engine === "communities") {
-    const graph = new UndirectedGraph();
-    for (const n of nodes) graph.addNode(n.id);
-    for (const e of request.edges) {
-      if (e.source !== e.target && byId.has(e.source) && byId.has(e.target))
-        graph.mergeEdge(e.source, e.target, {
-          weight: Math.log2(1 + e.weight),
-        });
-    }
-    const membership = louvain(graph, { randomWalk: false, resolution: 1.5 });
-    const groups = new Map<number, { nodes: Particle[]; edges: Edge[] }>();
-    for (const n of nodes) {
-      const id = membership[n.id];
-      if (!groups.has(id)) groups.set(id, { nodes: [], edges: [] });
-      groups.get(id)!.nodes.push(n);
-    }
-    for (const e of edges) {
-      if (membership[e.source] === membership[e.target])
-        groups.get(membership[e.source])!.edges.push(e);
-    }
-    components = [...groups.values()];
-  }
   const boxes = components
     .map((c) => {
       simulate(c.nodes, c.edges, engine, spacing);

@@ -3,7 +3,7 @@ export const layoutEngines = [
     id: "communities",
     name: "Topluluklar · Önerilen",
     description:
-      "Sık birlikte çalan gruplara ayrı alan açar. Kalabalık merkezi dağıtmak için.",
+      "Sık birlikte çalanları gruplar; birbiriyle daha çok çalan toplulukları yakına yerleştirir.",
   },
   {
     id: "forceatlas2",
@@ -41,3 +41,15 @@ export function parseSpacing(value: string | null): number {
   );
 }
 export type LayoutStatus = "pending" | "ready" | "fallback";
+
+export const groupingOptions = [
+  { value: 0.8, name: "Geniş" },
+  { value: 1.5, name: "Dengeli" },
+  { value: 3, name: "Ayrıntılı" },
+] as const;
+export function parseResolution(value: string | null): number {
+  return (
+    groupingOptions.find((option) => option.value === Number(value))?.value ??
+    1.5
+  );
+}

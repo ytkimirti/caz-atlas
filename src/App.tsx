@@ -13,6 +13,8 @@ import {
 import Network from "./Network";
 import {
   DEFAULT_ENGINE,
+  groupingOptions,
+  parseResolution,
   layoutEngines,
   parseEngine,
   parseSpacing,
@@ -275,6 +277,9 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   const [spacing, setSpacing] = useState(() =>
     parseSpacing(params.get("spacing")),
   );
+  const [resolution, setResolution] = useState(() =>
+    parseResolution(params.get("resolution")),
+  );
   const [layoutStatus, setLayoutStatus] = useState<LayoutStatus>("pending");
   const [labels, setLabels] = useState(true);
   const [showEnsembles, setShowEnsembles] = useState(true);
@@ -367,6 +372,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     if (instrument) query.set("instrument", instrument);
     if (minSharedConcerts !== 5) query.set("shared", String(minSharedConcerts));
     if (engine !== DEFAULT_ENGINE) query.set("engine", engine);
+    if (resolution !== 1.5) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
     window.history.replaceState(
@@ -383,6 +389,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     byId,
     engine,
     spacing,
+    resolution,
   ]);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
@@ -467,6 +474,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         labels={labels}
         engine={engine}
         spacing={spacing}
+        resolution={resolution}
         onLayoutStatus={setLayoutStatus}
         onSelect={select}
         onHover={setHoveredId}
@@ -488,6 +496,22 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         <p id="layout-description">
           {layoutEngines.find((option) => option.id === engine)!.description}
         </p>
+        {engine === "communities" && (
+          <div className="layout-spacing">
+            <label htmlFor="community-detail">Gruplama</label>
+            <select
+              id="community-detail"
+              value={resolution}
+              onChange={(e) => setResolution(parseResolution(e.target.value))}
+            >
+              {groupingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="layout-spacing">
           <label htmlFor="layout-spacing">Aralık</label>
           <select

@@ -93,29 +93,3 @@ for (const { id: engine } of layoutEngines) {
     });
   });
 }
-
-test("communities allocate separate areas to strongly connected groups", () => {
-  const positions = computeLayout({
-    nodes,
-    edges,
-    engine: "communities",
-    spacing: 1,
-  });
-  const bounds = (start: number, end: number) => {
-    const group = positions.filter((p) => p.id >= start && p.id < end);
-    return {
-      left: Math.min(...group.map((p) => p.x)),
-      right: Math.max(...group.map((p) => p.x)),
-      top: Math.min(...group.map((p) => p.y)),
-      bottom: Math.max(...group.map((p) => p.y)),
-    };
-  };
-  const a = bounds(0, 8),
-    b = bounds(8, 16);
-  expect(
-    a.right < b.left ||
-      b.right < a.left ||
-      a.bottom < b.top ||
-      b.bottom < a.top,
-  ).toBe(true);
-});

@@ -11,6 +11,7 @@
     "data:build": "bun run scripts/prepare.ts",
     "test": "bun test tests/unit",
     "test:ui": "bun run scripts/ui-check.ts",
+    "test:communities": "bun run scripts/community-check.ts",
     "test:progress": "bun run scripts/progress-check.ts",
     "test:layouts": "bun run scripts/layout-check.ts",
     "benchmark:layouts": "bun run scripts/layout-benchmark.ts",
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "d3-force": "^3.0.0",
+    "d3-hierarchy": "^3.1.2",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "graphology-layout-forceatlas2": "^0.10.1",
@@ -34,6 +36,7 @@
     "@playwright/test": "latest",
     "@types/bun": "latest",
     "@types/d3-force": "^3.0.10",
+    "@types/d3-hierarchy": "^3.1.7",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "latest",
