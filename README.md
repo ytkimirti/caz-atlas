@@ -24,8 +24,9 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 - Alttaki zaman çizelgesi 1956'dan kesit tarihine kadar aylık konser yoğunluğunu gösterir. Uçları sürükleyerek veya ay alanlarını girerek aralık seçilir; alt kenarından tutarak aralık taşınır. Çizgiye tıklamak veya sürüklemek gösterilen tarihi değiştirir.
 - Oynat düğmesi seçilen aralığın başından itibaren ağı biriktirerek gösterir. Duraklatma, 0,5× / 1× / 2× / 4× hız ve son 1 / 5 / 10 / 20 yıl kısayolları vardır. Tarih değişince topluluklar ve konumlar seçili dönemdeki ortak konserlere göre yeniden hesaplanır; işlem boyunca ilerleme çubuğu görünür. Hızlı tarih değişiklikleri önceki hesabı iptal eder; oynatma her dönemin hesabı tamamlanınca ilerler.
 - Aralık uçları klavyeyle birer ay, Shift ile birer yıl değişir; Home ve End sınıra götürür. Tarih aralığı ve oynatma konumu `from`, `to`, `at` parametreleriyle URL'de saklanır. Konser eşiği, mekan filtresi ve enstrüman vurgulaması aynı tarih görünümüne uygulanır.
-- **Yerleşim** menüsünden Topluluklar (varsayılan), ForceAtlas2, D3 veya ngraph seçilebilir. Topluluklar, sık birlikte çalanlara ayrı alan açar ve ilişkili toplulukları yakına yerleştirir. **Gruplama** ile geniş, dengeli veya ayrıntılı topluluklar seçilebilir. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
-- Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Mobilde filtreler kaydırılabilir bir overlay'dir.
+- Üst çubuktaki **Görünüm** menüsünün **Yerleşim** alanından Topluluklar (varsayılan), ForceAtlas2, D3 veya ngraph seçilebilir. Topluluklar, sık birlikte çalanlara ayrı alan açar ve ilişkili toplulukları yakına yerleştirir. **Gruplama** ile geniş, dengeli veya ayrıntılı topluluklar seçilebilir. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
+- Üst çubukta arama, filtreler, görünüm ayarları ve enstrüman vurgulaması bulunur. Filtreler ve görünüm ayrı panellerde açılır. İsim ve grup etiketi seçenekleri Görünüm menüsündedir.
+- Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Sağ alttaki + / − ve ekrana sığdır düğmeleri de kullanılabilir. Harita rehberi renkleri ve bağlantıları açıklar; bir enstrümana tıklayarak vurgulama açılabilir. Mobilde detaylar alt panelde, filtreler ise sabit sonuç düğmesi olan kaydırılabilir panelde açılır.
 
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
 
@@ -94,7 +95,7 @@ UI testi yalnızca yerel sunucuda, kurulu Chrome ile çalışır. Canvas hover, 
 
 Zaman çizelgesi testi, gerçek veriden beklenen tarih ve mekan sonuçlarını, yeniden hesaplanan düğüm konumlarını, hesaplama göstergesini, oynat/duraklat davranışını, URL geri yüklemeyi, aralık sürüklemeyi ve mobil dokunmayı doğrular. Ekran görüntüleri `.cache/timeline-*.png` altında tutulur.
 
-Grup / proje adları grafın üzerinde etiketlenir. Bir müzisyen seçildiğinde veya üzerine gelindiğinde ilgili etiketler ve kadroya uzanan kesikli çizgiler belirginleşir. Seçim paneli ilgili tüm projeleri ve konser sayılarını listeler. Filtrelerde grup etiketleri kapatılabilir; mekan filtresi yalnızca o mekandaki kadroları kullanır.
+Grup / proje adları grafın üzerinde etiketlenir. Bir müzisyen seçildiğinde veya üzerine gelindiğinde ilgili etiketler ve kadroya uzanan kesikli çizgiler belirginleşir. Seçim paneli ilgili tüm projeleri ve konser sayılarını listeler. Görünüm menüsünde grup etiketleri kapatılabilir; mekan filtresi yalnızca o mekandaki kadroları kullanır.
 
 Etiketler konser başlıklarından alınır, kalıcı grup üyeliği anlamına gelmez. Tek müzisyenin adıyla verilen konserler, genel jam session / açık sahne başlıkları ve iki müzisyenle eşleşmeyen kadrolar etiket oluşturmaz. Yakınlaşınca daha fazla etiket görünür; seçili müzisyen için graf üzerinde en fazla üç proje, panelde tamamı gösterilir.
 

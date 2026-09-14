@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Network as NetworkIcon,
   ChevronDown,
+  ArrowUpRight,
+  AudioLines,
+  Check,
+  Focus,
+  Info,
+  Minus,
+  Plus,
+  Settings2,
   Search,
   SlidersHorizontal,
   X,
@@ -290,6 +298,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       ? params.get("venue")!
       : "",
   );
+  const [viewOpen, setViewOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [instrument, setInstrument] = useState(
     groups.some((g) => g.id === params.get("instrument"))
       ? params.get("instrument")!
@@ -479,6 +489,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       }
       if (e.key === "Escape") {
         setFiltersOpen(false);
+        setViewOpen(false);
+        setLegendOpen(false);
         setSelectedId(null);
         setHoveredId(null);
       }
@@ -564,90 +576,171 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         onSelect={select}
         onHover={setHoveredId}
       />
-      <div className="layout-controls surface" aria-label="Graf yerleşimi">
-        <label htmlFor="layout-engine">Yerleşim</label>
-        <select
-          id="layout-engine"
-          value={engine}
-          onChange={(e) => setEngine(parseEngine(e.target.value))}
-          aria-describedby="layout-description"
+      <header className="app-header">
+        <div className="identity">
+          <div className="brand-icon" aria-hidden="true">
+            <AudioLines size={23} />
+          </div>
+          <div>
+            <h1 className="wordmark">
+              caz<span>atlas</span>
+              <i />
+            </h1>
+            <p>Türkiye’nin caz bağlantıları</p>
+          </div>
+        </div>
+        <div className="top-controls">
+          <MusicianSearch
+            nodes={ranked}
+            selected={selected}
+            onSelect={pick}
+            onHover={setHoveredId}
+          />
+        </div>
+        <div className="archive-meta">
+          <span className="live-dot" />
+          Birlikte çalmanın haritası
+          <small>1956 · {Math.floor(bounds[1] / 12)}</small>
+        </div>
+      </header>
+      <div className="explore-toolbar">
+        <div className="toolbar-actions">
+          <button
+            className={`filter-toggle ${filtersOpen ? "active" : ""}`}
+            aria-label="Filtreler"
+            aria-expanded={filtersOpen}
+            aria-controls="filters"
+            onClick={() => {
+              setFiltersOpen((v) => !v);
+              setViewOpen(false);
+            }}
+          >
+            <SlidersHorizontal size={16} />
+            <span>Filtreler</span>
+            {(minConcerts !== null || venueId || topCollaborators !== null) && (
+              <b className="filter-count">
+                {Number(minConcerts !== null) +
+                  Number(Boolean(venueId)) +
+                  Number(topCollaborators !== null)}
+              </b>
+            )}
+          </button>
+          <button
+            className={`view-toggle ${viewOpen ? "active" : ""}`}
+            aria-label="Görünüm"
+            aria-expanded={viewOpen}
+            aria-controls="view-settings"
+            onClick={() => {
+              setViewOpen((v) => !v);
+              setFiltersOpen(false);
+            }}
+          >
+            <Settings2 size={16} />
+            <span>Görünüm</span>
+            <ChevronDown size={13} />
+          </button>
+        </div>
+      </div>
+      {(filtersOpen || viewOpen) && (
+        <div
+          className="panel-backdrop"
+          aria-hidden="true"
+          onClick={() => {
+            setFiltersOpen(false);
+            setViewOpen(false);
+          }}
+        />
+      )}
+      {viewOpen && (
+        <section
+          id="view-settings"
+          className="layout-controls surface"
+          aria-label="Graf yerleşimi"
         >
-          {layoutEngines.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-        </select>
-        <p id="layout-description">
-          {layoutEngines.find((option) => option.id === engine)!.description}
-        </p>
-        {engine === "communities" && (
-          <div className="layout-spacing">
-            <label htmlFor="community-detail">Gruplama</label>
-            <select
-              id="community-detail"
-              value={resolution}
-              onChange={(e) => setResolution(parseResolution(e.target.value))}
+          <div className="panel-heading">
+            <div>
+              <span className="section-caption">GÖRÜNÜM</span>
+              <h2>Ağı düzenle</h2>
+            </div>
+            <button
+              className="icon-button"
+              aria-label="Görünümü kapat"
+              onClick={() => setViewOpen(false)}
             >
-              {groupingOptions.map((option) => (
+              <X size={18} />
+            </button>
+          </div>
+          <label htmlFor="layout-engine">Yerleşim</label>
+          <select
+            id="layout-engine"
+            value={engine}
+            onChange={(e) => setEngine(parseEngine(e.target.value))}
+            aria-describedby="layout-description"
+          >
+            {layoutEngines.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+          <p id="layout-description">
+            {layoutEngines.find((option) => option.id === engine)!.description}
+          </p>
+          {engine === "communities" && (
+            <div className="layout-spacing">
+              <label htmlFor="community-detail">Gruplama</label>
+              <select
+                id="community-detail"
+                value={resolution}
+                onChange={(e) => setResolution(parseResolution(e.target.value))}
+              >
+                {groupingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="layout-spacing">
+            <label htmlFor="layout-spacing">Aralık</label>
+            <select
+              id="layout-spacing"
+              value={spacing}
+              onChange={(e) => setSpacing(parseSpacing(e.target.value))}
+            >
+              {spacingOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.name}
                 </option>
               ))}
             </select>
           </div>
-        )}
-        <div className="layout-spacing">
-          <label htmlFor="layout-spacing">Aralık</label>
-          <select
-            id="layout-spacing"
-            value={spacing}
-            onChange={(e) => setSpacing(parseSpacing(e.target.value))}
-          >
-            {spacingOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <p className="layout-feedback">
-          {layoutStatus === "pending"
-            ? "Yerleşim hesaplanıyor…"
-            : layoutStatus === "fallback"
-              ? "Yerleşim hesaplanamadı. Tekrar deneyebilir veya başka bir yerleşim seçebilirsin."
-              : "Yerleşim hazır"}
-        </p>
-      </div>
-      <div className="identity">
-        <h1 className="wordmark">
-          caz<span>-atlas</span>
-          <i />
-        </h1>
-        <p>Kim, kiminle çalıyor?</p>
-      </div>
-      <div className="top-controls">
-        <MusicianSearch
-          nodes={ranked}
-          selected={selected}
-          onSelect={pick}
-          onHover={setHoveredId}
-        />
-      </div>
-
-      <button
-        className={`filter-toggle surface ${filtersOpen ? "active" : ""}`}
-        aria-label="Filtreler"
-        aria-expanded={filtersOpen}
-        aria-controls="filters"
-        onClick={() => setFiltersOpen((v) => !v)}
-      >
-        <SlidersHorizontal size={17} />
-        <span>Filtreler</span>
-        {(minConcerts !== null || venueId || topCollaborators !== null) && (
-          <i className="filter-dot" />
-        )}
-      </button>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={labels}
+              onChange={(e) => setLabels(e.target.checked)}
+            />
+            İsimleri göster
+          </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={showEnsembles}
+              onChange={(e) => setShowEnsembles(e.target.checked)}
+            />
+            Grup / proje adlarını göster
+          </label>
+          <p className="layout-feedback">
+            {layoutStatus === "pending"
+              ? "Yerleşim hesaplanıyor…"
+              : layoutStatus === "fallback"
+                ? "Yerleşim hesaplanamadı. Tekrar deneyebilir veya başka bir yerleşim seçebilirsin."
+                : "Yerleşim hazır"}
+          </p>
+        </section>
+      )}
 
       {(minConcerts !== null || venue || topCollaborators !== null) && (
         <div className="active-filters">
@@ -688,7 +781,10 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           aria-label="Graf filtreleri"
         >
           <div className="panel-heading">
-            <h2>Filtreler</h2>
+            <div>
+              <span className="section-caption">KEŞFİNİ ÖZELLEŞTİR</span>
+              <h2>Filtreler</h2>
+            </div>
             <button
               className="icon-button"
               aria-label="Filtreleri kapat"
@@ -697,158 +793,142 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               <X size={16} />
             </button>
           </div>
-          <div className="filter-section">
-            <div className="field-heading">
-              <label htmlFor="concert-min">Konser sayısı</label>
-              <button
-                className="subtle-button"
-                onClick={() => setMinConcerts(null)}
-              >
-                Tümü
-              </button>
-            </div>
-            <div className="threshold">
-              <input
-                id="concert-min"
-                type="number"
-                min="0"
-                step="1"
-                value={minConcerts ?? ""}
-                placeholder="0"
-                onChange={(e) =>
-                  setMinConcerts(
-                    e.target.value === ""
-                      ? null
-                      : Math.max(0, Math.floor(Number(e.target.value) || 0)),
-                  )
-                }
-              />
-              <span>konserden fazla</span>
-            </div>
-            <input
-              className="range"
-              type="range"
-              aria-label="Konser sayısı eşiği"
-              min="0"
-              max={maxConcerts}
-              step="1"
-              value={Math.min(minConcerts ?? 0, maxConcerts)}
-              onChange={(e) => setMinConcerts(Number(e.target.value))}
-            />
-            <div className="presets">
-              {[0, 10, 50, 100].map((n) => (
-                <button
-                  key={n}
-                  aria-pressed={minConcerts === n}
-                  onClick={() => setMinConcerts(n)}
-                >
-                  {n}+
-                </button>
-              ))}
-            </div>
-            <p className="field-note">
-              {venue
-                ? "Seçilen mekan ve tarih aralığındaki"
-                : "Seçilen tarih aralığındaki"}{" "}
-              geçmiş konserler sayılır.
-            </p>
-          </div>
-          <div className="filter-section">
-            <div className="field-heading">
-              <label htmlFor="venue-search">Mekan</label>
-              {venue && (
+          <div className="filter-body">
+            <div className="filter-section">
+              <div className="field-heading">
+                <label htmlFor="concert-min">Konser sayısı</label>
                 <button
                   className="subtle-button"
-                  onClick={() => setVenueId("")}
+                  onClick={() => setMinConcerts(null)}
                 >
                   Tümü
                 </button>
+              </div>
+              <div className="threshold">
+                <input
+                  id="concert-min"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={minConcerts ?? ""}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setMinConcerts(
+                      e.target.value === ""
+                        ? null
+                        : Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                    )
+                  }
+                />
+                <span>konserden fazla</span>
+              </div>
+              <input
+                className="range"
+                type="range"
+                aria-label="Konser sayısı eşiği"
+                min="0"
+                max={maxConcerts}
+                step="1"
+                value={Math.min(minConcerts ?? 0, maxConcerts)}
+                onChange={(e) => setMinConcerts(Number(e.target.value))}
+              />
+              <div className="presets">
+                {[0, 10, 50, 100].map((n) => (
+                  <button
+                    key={n}
+                    aria-pressed={minConcerts === n}
+                    onClick={() => setMinConcerts(n)}
+                  >
+                    {n}+
+                  </button>
+                ))}
+              </div>
+              <p className="field-note">
+                {venue
+                  ? "Seçilen mekan ve tarih aralığındaki"
+                  : "Seçilen tarih aralığındaki"}{" "}
+                geçmiş konserler sayılır.
+              </p>
+            </div>
+            <div className="filter-section">
+              <div className="field-heading">
+                <label htmlFor="venue-search">Mekan</label>
+                {venue && (
+                  <button
+                    className="subtle-button"
+                    onClick={() => setVenueId("")}
+                  >
+                    Tümü
+                  </button>
+                )}
+              </div>
+              <div className="venue-search">
+                <Search size={14} />
+                <input
+                  id="venue-search"
+                  placeholder="Mekan veya şehir ara"
+                  value={venueQuery}
+                  onChange={(e) => setVenueQuery(e.target.value)}
+                />
+              </div>
+              <div className="venue-list" aria-label="Mekanlar">
+                <button
+                  className={!venueId ? "chosen" : ""}
+                  aria-pressed={!venueId}
+                  onClick={() => setVenueId("")}
+                >
+                  <span>Tüm mekanlar</span>
+                </button>
+                {venues.map((v) => (
+                  <button
+                    key={v.id}
+                    className={v.id === venueId ? "chosen" : ""}
+                    aria-pressed={v.id === venueId}
+                    onClick={() => {
+                      setVenueId(v.id);
+                      setHoveredId(null);
+                    }}
+                  >
+                    <span>
+                      {v.name}
+                      <small>{v.city}</small>
+                    </span>
+                    <small>{number(v.concerts)}</small>
+                  </button>
+                ))}
+                {!venues.length && <p>Mekan bulunamadı.</p>}
+              </div>
+              {venue && (
+                <p className="field-note">
+                  Yalnızca burada aynı konserde çalanların bağları.
+                </p>
               )}
             </div>
-            <div className="venue-search">
-              <Search size={14} />
-              <input
-                id="venue-search"
-                placeholder="Mekan veya şehir ara"
-                value={venueQuery}
-                onChange={(e) => setVenueQuery(e.target.value)}
-              />
-            </div>
-            <div className="venue-list" aria-label="Mekanlar">
-              <button
-                className={!venueId ? "chosen" : ""}
-                aria-pressed={!venueId}
-                onClick={() => setVenueId("")}
-              >
-                <span>Tüm mekanlar</span>
-              </button>
-              {venues.map((v) => (
-                <button
-                  key={v.id}
-                  className={v.id === venueId ? "chosen" : ""}
-                  aria-pressed={v.id === venueId}
-                  onClick={() => {
-                    setVenueId(v.id);
-                    setHoveredId(null);
-                  }}
-                >
-                  <span>
-                    {v.name}
-                    <small>{v.city}</small>
-                  </span>
-                  <small>{number(v.concerts)}</small>
-                </button>
-              ))}
-              {!venues.length && <p>Mekan bulunamadı.</p>}
-            </div>
-            {venue && (
+            <div className="filter-section">
+              <div className="field-heading">
+                <span>Kişi başına bağlantı</span>
+              </div>
+              <div className="presets">
+                {[1, 3, 5, 10, null].map((n) => (
+                  <button
+                    key={n ?? "all"}
+                    aria-label={
+                      n === null
+                        ? "Tüm bağlantılar"
+                        : `Kişi başına ilk ${n} bağlantı`
+                    }
+                    aria-pressed={topCollaborators === n}
+                    onClick={() => setTopCollaborators(n)}
+                  >
+                    {n ?? "Tümü"}
+                  </button>
+                ))}
+              </div>
               <p className="field-note">
-                Yalnızca burada aynı konserde çalanların bağları.
+                En güçlü ortaklıkları göster. Bir müzisyeni seçtiğinde tüm
+                bağlantıları açılır.
               </p>
-            )}
-          </div>
-          <div className="filter-section">
-            <div className="field-heading">
-              <span>En çok birlikte çaldığı kişiler</span>
             </div>
-            <div className="presets">
-              {[1, 3, 5, 10, null].map((n) => (
-                <button
-                  key={n ?? "all"}
-                  aria-label={
-                    n === null
-                      ? "Tüm bağlantılar"
-                      : `Kişi başına ilk ${n} bağlantı`
-                  }
-                  aria-pressed={topCollaborators === n}
-                  onClick={() => setTopCollaborators(n)}
-                >
-                  {n ?? "Tümü"}
-                </button>
-              ))}
-            </div>
-            <p className="field-note">
-              Ortak konser sayısına göre, mevcut filtrelerde kişi başına en
-              güçlü bağlantılar. Bir kişinin listesinde olması yeterli; bu
-              yüzden bazı kişilerde daha fazla bağ görünebilir. Üzerine gelince
-              veya seçince kişinin tüm bağları görünür.
-            </p>
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={labels}
-                onChange={(e) => setLabels(e.target.checked)}
-              />
-              İsimleri göster
-            </label>
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={showEnsembles}
-                onChange={(e) => setShowEnsembles(e.target.checked)}
-              />
-              Grup / proje adlarını göster
-            </label>
           </div>
           <div className="filter-footer">
             <span>{number(graph.nodes.length)} müzisyen</span>
@@ -856,14 +936,18 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               Filtreleri temizle
             </button>
           </div>
+          <button
+            className="primary-button filter-done"
+            onClick={() => setFiltersOpen(false)}
+          >
+            <Check size={16} /> Sonuçları keşfet
+          </button>
         </section>
       )}
 
-      <section
-        className="instrument-explorer surface"
-        aria-label="Enstrüman vurgulama"
-      >
+      <section className="instrument-explorer" aria-label="Enstrüman vurgulama">
         <div className="instrument-control">
+          <AudioLines size={16} aria-hidden="true" />
           <div className="select-wrap">
             <select
               id="instrument"
@@ -892,7 +976,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           )}
         </div>
         {instrument && (
-          <>
+          <div className="instrument-results surface">
             <p
               id="instrument-summary"
               className="instrument-summary"
@@ -928,7 +1012,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
                 </div>
               </>
             )}
-          </>
+          </div>
         )}
       </section>
 
@@ -950,14 +1034,26 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               <X size={16} />
             </button>
           </div>
-          <h2>
+          <div
+            className="musician-avatar"
+            style={{ color: groupInfo(musician.group).color }}
+            aria-hidden="true"
+          >
+            {musician.name
+              .split(" ")
+              .map((part) => part[0])
+              .slice(0, 2)
+              .join("")}
+            <AudioLines size={18} />
+          </div>
+          <h2>{musician.name}</h2>
+          <p className="musician-meta">
             <i
               className="color-dot"
               style={{ background: groupInfo(musician.group).color }}
             />
-            {musician.name}
-          </h2>
-          <p className="musician-meta">{groupInfo(musician.group).name}</p>
+            {groupInfo(musician.group).name}
+          </p>
           <div className="musician-stats">
             <div>
               <strong>{number(counts[musician.id] ?? 0)}</strong>
@@ -985,8 +1081,16 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
                 onFocus={() => setHoveredId(c.id)}
                 onBlur={() => setHoveredId(null)}
               >
+                <i className="collaborator-rank" aria-hidden="true">
+                  {String(i + 1).padStart(2, "0")}
+                </i>
                 <span>{byId.get(c.id)!.name}</span>
                 <small>{number(c.weight)}</small>
+                <ArrowUpRight
+                  className="row-arrow"
+                  size={14}
+                  aria-hidden="true"
+                />
               </button>
             ))}
             {!collaborators.length && <p>Bu filtrelerde bağlantısı yok.</p>}
@@ -1071,6 +1175,88 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             </span>
           </div>
         ) : null}
+      </div>
+      <div className="graph-tools">
+        <div className="graph-help">
+          <button
+            className={`legend-toggle surface ${legendOpen ? "active" : ""}`}
+            aria-label="Harita rehberi"
+            aria-expanded={legendOpen}
+            onClick={() => setLegendOpen((v) => !v)}
+          >
+            <Info size={16} />
+            <span>Harita rehberi</span>
+          </button>
+          <p>Bir müzisyen seç, bağlantılarını keşfet.</p>
+        </div>
+        {legendOpen && (
+          <section className="graph-legend surface" aria-label="Harita rehberi">
+            <div className="panel-heading">
+              <h2>Her nokta bir müzisyen.</h2>
+              <button
+                className="icon-button"
+                aria-label="Rehberi kapat"
+                onClick={() => setLegendOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p>
+              Nokta büyüklüğü konser sayısını, çizgiler birlikte çalan
+              müzisyenleri gösterir.
+            </p>
+            <div className="legend-groups">
+              {groups.map((group) => (
+                <button
+                  key={group.id}
+                  aria-pressed={instrument === group.id}
+                  onClick={() =>
+                    setInstrument(instrument === group.id ? "" : group.id)
+                  }
+                >
+                  <i
+                    className="color-dot"
+                    style={{ background: group.color }}
+                  />
+                  {group.name}
+                </button>
+              ))}
+            </div>
+            <p className="legend-shortcuts">
+              Sürükle: taşı · Kaydır: yakınlaş · Esc: seçimi kaldır
+            </p>
+          </section>
+        )}
+        <div
+          className="zoom-controls surface"
+          aria-label="Yakınlaştırma kontrolleri"
+        >
+          <button
+            className="icon-button"
+            aria-label="Yakınlaştır"
+            title="Yakınlaştır (+)"
+            onClick={() => network.current?.zoom(1.3)}
+          >
+            <Plus size={18} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Uzaklaştır"
+            title="Uzaklaştır (-)"
+            onClick={() => network.current?.zoom(1 / 1.3)}
+          >
+            <Minus size={18} />
+          </button>
+          <span />
+          <button
+            className="icon-button"
+            aria-label="Ekrana sığdır"
+            title="Ekrana sığdır (0)"
+            onClick={() => network.current?.fit()}
+          >
+            <Focus size={18} />
+          </button>
+        </div>
       </div>
       <Timeline
         bounds={bounds}

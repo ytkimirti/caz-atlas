@@ -15,6 +15,7 @@ const ready = () =>
 try {
   await page.goto(base);
   await ready();
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   const visibleEdges = await canvas.getAttribute("data-visible-edges");
   await page.screenshot({ path: ".cache/communities-balanced.png" });
   for (const value of ["0.8", "3", "1.5"]) {
@@ -28,6 +29,7 @@ try {
   await expect(page).toHaveURL(/resolution=3/);
   await page.reload();
   await ready();
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await expect(detail).toHaveValue("3");
   await page.getByLabel("Yerleşim", { exact: true }).selectOption("d3");
   await ready();
@@ -53,6 +55,7 @@ try {
   await page.screenshot({ path: ".cache/communities-all.png" });
   await page.goto(`${base}?resolution=NaN`);
   await ready();
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await expect(detail).toHaveValue("1.5");
   expect(errors).toEqual([]);
   console.log(

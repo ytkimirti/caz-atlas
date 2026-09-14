@@ -205,7 +205,7 @@ try {
   await page.getByRole("button", { name: "Mekan filtresini kaldır" }).click();
   await page.getByRole("button", { name: "Tüm tarihleri göster" }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect.poll(async () => (await canvas.boundingBox())!.height).toBe(688);
+  await expect.poll(async () => (await canvas.boundingBox())!.height).toBe(650);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

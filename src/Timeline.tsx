@@ -152,6 +152,10 @@ export default function Timeline({
       aria-label="Zaman çizelgesi"
       style={{ "--play-duration": `${300 / speed}ms` } as CSSProperties}
     >
+      <div className="timeline-heading">
+        <span className="section-caption">ZAMAN İÇİNDE KEŞFET</span>
+        <span>Bir dönem seç veya ağın büyümesini oynat.</span>
+      </div>
       <div className="timeline-main">
         <div className="timeline-transport">
           <button

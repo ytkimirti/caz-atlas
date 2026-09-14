@@ -142,6 +142,7 @@ try {
   await expect(page.locator(".selection-panel")).toBeVisible();
   // Retry/failure on mobile must also be accessible while a selection is open.
   await page.setViewportSize({ width: 1512, height: 982 });
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await page.getByLabel("Yerleşim", { exact: true }).selectOption("d3");
   await expect(progress).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });

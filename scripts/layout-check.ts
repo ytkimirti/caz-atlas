@@ -30,6 +30,7 @@ try {
   }
   // A replacement worker wins even when the previous graph is still computing.
   await page.goto(`${base}?min=all&engine=forceatlas2`);
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   const selector = page.getByLabel("Yerleşim", { exact: true });
   await selector.selectOption("d3");
   await selector.selectOption("ngraph");
@@ -38,10 +39,12 @@ try {
   await expect(page).toHaveURL(/engine=ngraph/);
   await page.reload();
   await ready();
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await expect(selector).toHaveValue("ngraph");
   // Invalid URL values recover without sending bad parameters to the worker.
   await page.goto(`${base}?engine=invalid&spacing=NaN`);
   await ready();
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await expect(selector).toHaveValue("communities");
   await expect(page.getByLabel("Aralık", { exact: true })).toHaveValue("1");
   // Worker failures leave a usable graph and a visible recovery instruction.

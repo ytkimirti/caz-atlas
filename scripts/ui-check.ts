@@ -77,7 +77,7 @@ try {
     x: 0,
     y: 0,
     width: 1512,
-    height: 854,
+    height: 818,
   });
   expect(
     await page.evaluate(
@@ -88,6 +88,41 @@ try {
   await expect(
     page.getByText(/Jam session|Plak koleksiyonu|Hikâyesi/),
   ).toHaveCount(0);
+  // The toolbar opens one settings panel at a time, and the guide highlights instruments.
+  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Sonuçları keşfet" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
+  await expect(page.locator(".filter-panel")).toHaveCount(0);
+  await expect(
+    page.getByLabel("İsimleri göster", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Görünümü kapat" }).click();
+  await page
+    .getByRole("button", { name: "Harita rehberi", exact: true })
+    .click();
+  await page
+    .locator(".graph-legend")
+    .getByRole("button", { name: "Piyano", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Enstrüman vurgula", { exact: true }),
+  ).toHaveValue("Piano");
+  await page.getByRole("button", { name: "Vurgulamayı kaldır" }).click();
+  await page.getByRole("button", { name: "Rehberi kapat" }).click();
+  const fitZoom = Number(await canvas.getAttribute("data-zoom"));
+  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-zoom")))
+    .toBeCloseTo(fitZoom * 1.3, 5);
+  await page.getByRole("button", { name: "Uzaklaştır", exact: true }).click();
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-zoom")))
+    .toBeCloseTo(fitZoom, 5);
+  await page
+    .getByRole("button", { name: "Ekrana sığdır", exact: true })
+    .click();
   const defaultGraph = filterGraph(
     { nodes: data.nodes, edges: concerts.edges },
     concerts.counts,
@@ -298,6 +333,7 @@ try {
   await search.blur();
 
   // Switching layouts runs a fresh worker and persists a valid selection.
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   for (const engine of ["d3", "ngraph", "forceatlas2", "communities"]) {
     await page.getByLabel("Yerleşim", { exact: true }).selectOption(engine);
     await expect(canvas).toHaveAttribute("data-engine", engine);
@@ -310,10 +346,12 @@ try {
   await expect(page).toHaveURL(/spacing=1.6/);
   await page.reload();
   await ready();
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await expect(page.getByLabel("Aralık", { exact: true })).toHaveValue("1.6");
   await page.getByLabel("Aralık", { exact: true }).selectOption("1");
   await ready();
 
+  await page.getByRole("button", { name: "Görünümü kapat" }).click();
   await choose("asude sasmaz");
   await expect(page.locator(".selection-panel h2")).toHaveText("Asude Şaşmaz");
   await expect(page).toHaveURL(/m=AsudeSasmaz/);
@@ -456,6 +494,23 @@ try {
       .locator(".filter-panel")
       .evaluate((panel) => panel.getAnimations().length),
   ).toBe(0);
+  const done = page.getByRole("button", { name: "Sonuçları keşfet" });
+  const doneY = (await done.boundingBox())!.y;
+  await page
+    .getByRole("button", { name: "Kişi başına ilk 3 bağlantı", exact: true })
+    .scrollIntoViewIfNeeded();
+  expect((await done.boundingBox())!.y).toBe(doneY);
+  expect(
+    await done.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      return button.contains(
+        document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2,
+        ),
+      );
+    }),
+  ).toBe(true);
   await page.screenshot({ path: ".cache/minimal-mobile-filters.png" });
   await page.keyboard.press("Escape");
   await expect(page.locator(".filter-panel")).toHaveCount(0);

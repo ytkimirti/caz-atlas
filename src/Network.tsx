@@ -186,7 +186,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         maxY = Math.max(maxY, p.y);
       }
       const availableWidth = width - (width > 700 ? 120 : 42);
-      const availableHeight = height - (width > 700 ? 160 : 230);
+      const headerHeight =
+        parseFloat(
+          getComputedStyle(canvas).getPropertyValue("--header-height"),
+        ) || 0;
+      const topInset = headerHeight + 24;
+      const bottomInset = 64;
+      const availableHeight = Math.max(48, height - topInset - bottomInset);
       const nextZoom = Math.max(
         0.025,
         Math.min(
@@ -199,7 +205,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         {
           zoom: nextZoom,
           x: width / 2 - ((minX + maxX) / 2) * nextZoom,
-          y: height / 2 + 20 - ((minY + maxY) / 2) * nextZoom,
+          y:
+            (topInset + height - bottomInset) / 2 -
+            ((minY + maxY) / 2) * nextZoom,
         },
         animate,
       );
@@ -523,7 +531,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       ctx.globalAlpha = 1;
       ctx.beginPath();
-      ctx.strokeStyle = "#b8b9b080";
+      ctx.strokeStyle = focus === null ? "#b8b9b050" : "#b8b9b025";
       ctx.lineWidth = 0.7;
       for (const { edge, alpha } of animatedEdges.values())
         if (alpha === 1) line(edge);
@@ -567,7 +575,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       for (const node of drawOrder) {
         const alpha = opacity.get(node.id) || 0;
         if (!alpha) continue;
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha =
+          alpha *
+          (focus !== null &&
+          !emphasized.has(node.id) &&
+          !highlighted.has(node.id)
+            ? 0.35
+            : 1);
         const p = point(node.id),
           r =
             (emphasized.has(node.id)
