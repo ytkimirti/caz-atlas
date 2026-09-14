@@ -1871,3 +1871,58 @@ input[type="checkbox"] {
     transform: scaleY(1);
   }
 }
+
+.view-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  margin-left: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f6f0;
+}
+.view-switch button {
+  min-width: 32px;
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+.view-switch button[aria-pressed="true"] {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 1px 4px #223c3012;
+}
+.layout-controls .spatial-title {
+  margin: 0;
+  color: var(--accent);
+  font-weight: 600;
+}
+.network-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.spatial-touch-help {
+  display: none;
+}
+@media (max-width: 700px) {
+  .identity p {
+    display: none;
+  }
+  .view-switch {
+    margin-left: auto;
+  }
+  .view-switch button {
+    min-height: 26px;
+  }
+}
+@media (pointer: coarse) {
+  .spatial-desktop-help {
+    display: none;
+  }
+  .spatial-touch-help {
+    display: inline;
+  }
+}

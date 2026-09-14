@@ -53,3 +53,8 @@ export function parseResolution(value: string | null): number {
     1.5
   );
 }
+
+export type ViewMode = "2d" | "3d";
+export function parseViewMode(value: string | null): ViewMode {
+  return value === "3d" ? "3d" : "2d";
+}

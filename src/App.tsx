@@ -31,6 +31,7 @@ import {
   parseResolution,
   layoutEngines,
   parseEngine,
+  parseViewMode,
   parseSpacing,
   spacingOptions,
 } from "./layout-options";
@@ -312,6 +313,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         ? Number(params.get("top"))
         : 5,
   );
+  const [mode, setMode] = useState(() => parseViewMode(params.get("view")));
   const [engine, setEngine] = useState(() => parseEngine(params.get("engine")));
   const [spacing, setSpacing] = useState(() =>
     parseSpacing(params.get("spacing")),
@@ -458,6 +460,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         "top",
         topCollaborators === null ? "all" : String(topCollaborators),
       );
+    if (mode === "3d") query.set("view", mode);
     if (engine !== DEFAULT_ENGINE) query.set("engine", engine);
     if (resolution !== 1.5) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
@@ -477,6 +480,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     range,
     bounds,
     cursor,
+    mode,
     engine,
     spacing,
     resolution,
@@ -570,12 +574,20 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         labels={labels}
         instrument={instrument}
         engine={engine}
+        mode={mode}
         spacing={spacing}
         resolution={resolution}
         onLayoutStatus={setLayoutStatus}
         onSelect={select}
         onHover={setHoveredId}
       />
+      {mode === "3d" && (
+        <p id="spatial-help" className="sr-only">
+          Sürükleyerek veya ok tuşlarıyla döndür. Shift ile taşı. Kaydırarak
+          yakınlaş. Dokunmatik ekranda tek parmakla döndür, iki parmakla taşı ve
+          yakınlaş.
+        </p>
+      )}
       <header className="app-header">
         <div className="identity">
           <div className="brand-icon" aria-hidden="true">
@@ -587,6 +599,20 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               <i />
             </h1>
             <p>Türkiye’nin caz bağlantıları</p>
+          </div>
+          <div className="view-switch" role="group" aria-label="Graf boyutu">
+            {(["2d", "3d"] as const).map((value) => (
+              <button
+                key={value}
+                aria-pressed={mode === value}
+                onClick={() => {
+                  setMode(value);
+                  setHoveredId(null);
+                }}
+              >
+                {value.toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
         <div className="top-controls">
@@ -670,23 +696,32 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               <X size={18} />
             </button>
           </div>
-          <label htmlFor="layout-engine">Yerleşim</label>
-          <select
-            id="layout-engine"
-            value={engine}
-            onChange={(e) => setEngine(parseEngine(e.target.value))}
-            aria-describedby="layout-description"
-          >
-            {layoutEngines.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-          <p id="layout-description">
-            {layoutEngines.find((option) => option.id === engine)!.description}
-          </p>
-          {engine === "communities" && (
+          {mode === "2d" ? (
+            <>
+              <label htmlFor="layout-engine">Yerleşim</label>
+              <select
+                id="layout-engine"
+                value={engine}
+                onChange={(e) => setEngine(parseEngine(e.target.value))}
+                aria-describedby="layout-description"
+              >
+                {layoutEngines.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+              <p id="layout-description">
+                {
+                  layoutEngines.find((option) => option.id === engine)!
+                    .description
+                }
+              </p>
+            </>
+          ) : (
+            <p className="spatial-title">Üç boyutlu ağ</p>
+          )}
+          {mode === "2d" && engine === "communities" && (
             <div className="layout-spacing">
               <label htmlFor="community-detail">Gruplama</label>
               <select
@@ -716,6 +751,20 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               ))}
             </select>
           </div>
+          {mode === "3d" && (
+            <>
+              <p id="spatial-view-help">
+                <span className="spatial-desktop-help">
+                  Sürükleyerek döndür. Shift + sürükle ile taşı. Kaydırarak
+                  yakınlaş. Graf odaktayken ok tuşlarıyla döndür, Shift + ok
+                  tuşlarıyla taşı.
+                </span>
+                <span className="spatial-touch-help">
+                  Tek parmakla döndür. İki parmakla taşı ve yakınlaş.
+                </span>
+              </p>
+            </>
+          )}
           <label className="check-label">
             <input
               type="checkbox"
@@ -1187,7 +1236,11 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             <Info size={16} />
             <span>Harita rehberi</span>
           </button>
-          <p>Bir müzisyen seç, bağlantılarını keşfet.</p>
+          <p>
+            {mode === "3d"
+              ? "Sürükleyerek döndür, bağlantıları keşfet."
+              : "Bir müzisyen seç, bağlantılarını keşfet."}
+          </p>
         </div>
         {legendOpen && (
           <section className="graph-legend surface" aria-label="Harita rehberi">
@@ -1250,7 +1303,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           <span />
           <button
             className="icon-button"
-            aria-label="Ekrana sığdır"
+            aria-label={mode === "3d" ? "Görünümü sıfırla" : "Ekrana sığdır"}
             title="Ekrana sığdır (0)"
             onClick={() => network.current?.fit()}
           >
