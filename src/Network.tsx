@@ -1,4 +1,10 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 import type { Atlas, Edge } from "./types";
 import { groupInfo } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
@@ -10,6 +16,8 @@ export interface NetworkHandle {
 }
 interface Props {
   data: Pick<Atlas, "nodes" | "edges">;
+  layoutData: Pick<Atlas, "nodes" | "edges">;
+  layoutCounts: Record<string, number>;
   edges: Edge[];
   counts: Record<string, number>;
   selected: number | null;
@@ -22,8 +30,15 @@ interface Props {
 
 const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const state = useRef(props);
-  state.current = props;
+  const neighbors = useMemo(() => adjacency(props.data), [props.data]);
+  const edgesByKey = useMemo(
+    () =>
+      new Map(props.data.edges.map((e) => [edgeKey(e.source, e.target), e])),
+    [props.data],
+  );
+  const derived = { ...props, neighbors, edgesByKey };
+  const state = useRef(derived);
+  state.current = derived;
   const api = useRef<NetworkHandle>({ fit() {}, zoom() {}, focus() {} });
   const invalidate = useRef(() => {});
   useImperativeHandle(
@@ -37,21 +52,35 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   );
   useEffect(
     () => invalidate.current(),
-    [props.selected, props.hovered, props.path, props.labels, props.edges],
+    [
+      props.selected,
+      props.hovered,
+      props.path,
+      props.labels,
+      props.edges,
+      props.data,
+      props.counts,
+    ],
   );
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
-    const nodes = props.data.nodes;
+    const nodes = props.layoutData.nodes;
     const positions = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
-    const neighbors = adjacency(props.data);
-    const edgesByKey = new Map(
-      props.data.edges.map((e) => [edgeKey(e.source, e.target), e]),
+    const opacity = new Map(props.data.nodes.map((n) => [n.id, 1]));
+    const animatedEdges = new Map(
+      props.edges.map((edge) => [
+        edgeKey(edge.source, edge.target),
+        { edge, alpha: 1 },
+      ]),
     );
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let lastFrame = 0;
     const ranked = [...nodes].sort(
       (a, b) =>
-        (props.counts[b.id] || b.degree) - (props.counts[a.id] || a.degree),
+        (props.layoutCounts[b.id] || b.degree) -
+        (props.layoutCounts[a.id] || a.degree),
     );
     let width = 0,
       height = 0,
@@ -178,15 +207,18 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.dataset.layout = "fallback";
     };
     worker.postMessage({
-      nodes: nodes.map((n) => ({ id: n.id, count: props.counts[n.id] || 0 })),
-      edges: props.data.edges,
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        count: props.layoutCounts[n.id] || 0,
+      })),
+      edges: props.layoutData.edges,
     });
     void document.fonts.ready.then(invalidateFrame);
 
     function hit(x: number, y: number) {
       let id: number | null = null,
         nearest = Infinity;
-      for (const n of nodes) {
+      for (const n of state.current.data.nodes) {
         const p = point(n.id),
           distance = Math.hypot(p.x - x, p.y - y);
         if (distance <= Math.max(7, radius(n.id) + 3) && distance < nearest) {
@@ -281,9 +313,42 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     canvas.addEventListener("pointerleave", clearHover);
     canvas.addEventListener("wheel", wheel, { passive: false });
 
-    function draw() {
+    function draw(now: number) {
       frame = 0;
       const s = state.current;
+      const { neighbors, edgesByKey } = s;
+      const visible = new Set(s.data.nodes.map((n) => n.id));
+      const delta = motion.matches
+        ? 1
+        : Math.min(32, now - (lastFrame || now - 16)) / 300;
+      lastFrame = now;
+      let animating = false;
+      for (const node of nodes) {
+        const target = visible.has(node.id) ? 1 : 0,
+          current = opacity.get(node.id) || 0;
+        const next =
+          target > current
+            ? Math.min(target, current + delta)
+            : Math.max(target, current - delta);
+        opacity.set(node.id, next);
+        if (next !== target) animating = true;
+      }
+      const visibleEdges = new Set(
+        s.edges.map((e) => edgeKey(e.source, e.target)),
+      );
+      for (const edge of s.edges) {
+        const key = edgeKey(edge.source, edge.target);
+        if (!animatedEdges.has(key)) animatedEdges.set(key, { edge, alpha: 0 });
+      }
+      for (const [key, item] of animatedEdges) {
+        const target = visibleEdges.has(key) ? 1 : 0;
+        item.alpha =
+          target > item.alpha
+            ? Math.min(target, item.alpha + delta)
+            : Math.max(target, item.alpha - delta);
+        if (item.alpha !== target) animating = true;
+        if (!item.alpha && !target) animatedEdges.delete(key);
+      }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const focus = s.hovered ?? s.selected;
@@ -309,7 +374,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         }
         ctx.stroke();
       }
-      lines(s.edges, "#b8b9b080", 0.7);
+      for (const { edge, alpha } of animatedEdges.values()) {
+        ctx.globalAlpha = alpha;
+        lines([edge], "#b8b9b080", 0.7);
+      }
+      ctx.globalAlpha = 1;
       if (focus !== null) {
         const focusEdges = (neighbors.get(focus) || []).map((n) =>
           edgesByKey.get(edgeKey(focus, n.id))!,
@@ -323,8 +392,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           2.4,
         );
       for (const node of nodes) {
+        const alpha = opacity.get(node.id) || 0;
+        if (!alpha) continue;
+        ctx.globalAlpha = alpha;
         const p = point(node.id),
-          r = radius(node.id);
+          r = radius(node.id) * (0.5 + alpha * 0.5);
         if (p.x < -20 || p.y < -20 || p.x > width + 20 || p.y > height + 20)
           continue;
         const special = node.id === s.selected || node.id === s.hovered;
@@ -343,6 +415,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.stroke();
         }
       }
+      ctx.globalAlpha = 1;
       const occupied: { x: number; y: number; w: number; h: number }[] = [];
       const orderedIds = new Set([
         ...(s.hovered === null ? [] : [s.hovered]),
@@ -350,7 +423,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ...s.path,
         ...ranked.map((n) => n.id),
       ]);
-      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const byId = new Map(s.data.nodes.map((n) => [n.id, n]));
       let labels = 0;
       for (const id of orderedIds) {
         const n = byId.get(id);
@@ -368,6 +441,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           r = radius(id);
         if (p.x < 16 || p.x > width - 16 || p.y < 60 || p.y > height - 55)
           continue;
+        ctx.globalAlpha = opacity.get(id) || 0;
         ctx.font = `${special ? 600 : 400} ${special ? 12 : 11}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
         const w = ctx.measureText(n.name).width + 10;
         const x = Math.max(4, Math.min(width - w - 4, p.x - w / 2)),
@@ -393,6 +467,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.fillText(n.name, x + w / 2, y + 13);
         labels++;
       }
+      ctx.globalAlpha = 1;
+      if (animating) invalidateFrame();
+      canvas.dataset.animating = String(animating);
+      canvas.dataset.visibleNodes = String(s.data.nodes.length);
       // Expose the rendered state for interaction checks.
       canvas.dataset.visibleEdges = String(s.edges.length);
       canvas.dataset.focus = focus === null ? "" : String(focus);
@@ -416,7 +494,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.removeEventListener("wheel", wheel);
       invalidate.current = () => {};
     };
-  }, [props.data, props.counts]);
+  }, [props.layoutData, props.layoutCounts]);
 
   return (
     <canvas

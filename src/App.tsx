@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowUpRight,
   ChevronDown,
   LocateFixed,
   Minus,
@@ -10,6 +9,15 @@ import {
   X,
 } from "lucide-react";
 import Network from "./Network";
+import Timeline from "./Timeline";
+import {
+  concertHistogram,
+  concertWindow,
+  monthIndex,
+  monthValue,
+  readRange,
+} from "./chronology";
+import type { DateRange } from "./chronology";
 import type { NetworkHandle } from "./Network";
 import type { Atlas, ConcertIndex, Musician } from "./types";
 import { groupInfo, groups, normalize, number } from "./types";
@@ -205,6 +213,27 @@ export default function App() {
 
 function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const bounds = useMemo<DateRange>(() => {
+    const events = concerts.timeline;
+    return events.length
+      ? [monthIndex(events[0].date), monthIndex(events[events.length - 1].date)]
+      : [monthIndex(concerts.meta.through), monthIndex(concerts.meta.through)];
+  }, [concerts]);
+  const [range, setRange] = useState<DateRange>(() =>
+    readRange(params.get("from"), params.get("to"), bounds),
+  );
+  const [cursor, setCursor] = useState(
+    () =>
+      readRange(
+        params.get("from"),
+        params.get("at") ?? params.get("to"),
+        range,
+      )[1],
+  );
+  function changeRange(next: DateRange) {
+    setRange(next);
+    setCursor(next[1]);
+  }
   const initialMin = Number(params.get("min") ?? 10);
   const [minConcerts, setMinConcerts] = useState<number | null>(
     params.get("min") === "all"
@@ -241,17 +270,40 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     () => concerts.venues.find((v) => v.id === venueId),
     [concerts, venueId],
   );
-  const counts = venue?.musicians ?? concerts.counts;
-  const graph = useMemo(
+  const layoutCounts = venue?.musicians ?? concerts.counts;
+  const layoutGraph = useMemo(
     () =>
       filterGraph(
         { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
-        counts,
+        layoutCounts,
         minConcerts,
         instrument,
-        venue?.musicians,
+        layoutCounts,
       ),
-    [data, concerts.edges, counts, minConcerts, instrument, venue],
+    [data, concerts, layoutCounts, minConcerts, instrument, venue],
+  );
+  const windowed = useMemo(
+    () => concertWindow(concerts.timeline, range[0], cursor, venueId),
+    [concerts, range[0], cursor, venueId],
+  );
+  const histogram = useMemo(
+    () => concertHistogram(concerts.timeline, bounds, venueId),
+    [concerts, bounds, venueId],
+  );
+  const allDates = range[0] === bounds[0] && cursor === bounds[1];
+  const counts = allDates ? layoutCounts : windowed.counts;
+  const graph = useMemo(
+    () =>
+      allDates
+        ? layoutGraph
+        : filterGraph(
+            { nodes: layoutGraph.nodes, edges: windowed.edges },
+            counts,
+            minConcerts,
+            instrument,
+            counts,
+          ),
+    [allDates, layoutGraph, windowed, counts, minConcerts, instrument],
   );
   const visibleIds = useMemo(
     () => new Set(graph.nodes.map((n) => n.id)),
@@ -304,6 +356,9 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
 
   useEffect(() => {
     const query = new URLSearchParams();
+    if (range[0] !== bounds[0]) query.set("from", monthValue(range[0]));
+    if (range[1] !== bounds[1]) query.set("to", monthValue(range[1]));
+    if (cursor !== range[1]) query.set("at", monthValue(cursor));
     if (minConcerts !== 10)
       query.set("min", minConcerts === null ? "all" : String(minConcerts));
     if (venueId) query.set("venue", venueId);
@@ -315,7 +370,17 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       "",
       window.location.pathname + (query.size ? "?" + query : ""),
     );
-  }, [minConcerts, venueId, instrument, edgeLimit, selected, byId]);
+  }, [
+    minConcerts,
+    venueId,
+    instrument,
+    edgeLimit,
+    selected,
+    byId,
+    range,
+    bounds,
+    cursor,
+  ]);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -337,6 +402,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     return () => window.removeEventListener("keydown", listener);
   }, []);
   function resetFilters() {
+    changeRange([...bounds]);
     setMinConcerts(null);
     setInstrument("");
     setVenueId("");
@@ -355,6 +421,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       <Network
         ref={network}
         data={graph}
+        layoutData={layoutGraph}
+        layoutCounts={layoutCounts}
         edges={edges}
         counts={counts}
         selected={selected}
@@ -491,8 +559,10 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               ))}
             </div>
             <p className="field-note">
-              {venue ? "Seçilen mekandaki" : "Arşivdeki"} geçmiş konserler
-              sayılır.
+              {venue
+                ? "Seçilen mekan ve tarih aralığındaki"
+                : "Seçilen tarih aralığındaki"}{" "}
+              geçmiş konserler sayılır.
             </p>
           </div>
           <div className="filter-section">
@@ -666,7 +736,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       {!graph.nodes.length && (
         <div className="empty-state surface" role="status">
           <strong>Bu filtrelerde müzisyen yok.</strong>
-          <p>Konser eşiğini düşür veya başka bir mekan seç.</p>
+          <p>Konser eşiğini düşür veya tarih aralığını genişlet.</p>
           <button className="text-button" onClick={resetFilters}>
             Filtreleri temizle
           </button>
@@ -718,15 +788,17 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           </p>
         )}
       </div>
-      <div className="graph-footer">
-        <span>
-          {number(graph.nodes.length)} müzisyen <b>·</b> {number(edges.length)}{" "}
-          güçlü bağ
-        </span>
-        <a href="https://bizimcaz.com" target="_blank" rel="noreferrer">
-          Bizim Caz <ArrowUpRight size={10} />
-        </a>
-      </div>
+      <Timeline
+        bounds={bounds}
+        range={range}
+        cursor={cursor}
+        histogram={histogram}
+        musicians={graph.nodes.length}
+        edges={edges.length}
+        concerts={windowed.concerts}
+        onRange={changeRange}
+        onCursor={setCursor}
+      />
       <div className="zoom-controls surface" aria-label="Graf görünümü">
         <button
           className="icon-button"

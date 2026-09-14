@@ -39,7 +39,7 @@ try {
     x: 0,
     y: 0,
     width: 1512,
-    height: 982,
+    height: 768,
   });
   expect(
     await page.evaluate(
@@ -215,7 +215,7 @@ try {
   await ready();
   await expect(canvas).toHaveAttribute(
     "aria-label",
-    new RegExp(`^${data.nodes.length} müzisyenin`),
+    new RegExp(`^${Object.keys(concerts.counts).length} müzisyenin`),
   );
   await page.screenshot({ path: ".cache/minimal-all.png" });
 
@@ -234,7 +234,7 @@ try {
   await recovery.close();
   expect(errors).toEqual([]);
   console.log(
-    "UI verified: full-screen light canvas, sparse links, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
+    "UI verified: light graph above timeline, sparse links, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
   );
 } finally {
   await browser.close();

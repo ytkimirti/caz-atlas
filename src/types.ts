@@ -45,7 +45,13 @@ export interface Venue {
   musicians: Record<string, number>;
   edges: Edge[];
 }
+export interface DatedConcert {
+  date: string;
+  venue: string;
+  musicians: number[];
+}
 export interface ConcertIndex {
+  timeline: DatedConcert[];
   counts: Record<string, number>;
   edges: Edge[];
   venues: Venue[];

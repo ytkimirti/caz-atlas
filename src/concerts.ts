@@ -1,4 +1,10 @@
-import type { ConcertIndex, Edge, Musician, Venue } from "./types";
+import type {
+  ConcertIndex,
+  DatedConcert,
+  Edge,
+  Musician,
+  Venue,
+} from "./types";
 import { normalize } from "./types";
 import { edgeKey } from "./graph";
 
@@ -21,6 +27,7 @@ export function indexConcerts(
     const name = normalize(node.name.trim()).replace(/\s+/g, " ");
     names.set(name, [...(names.get(name) || []), node.id]);
   }
+  const timeline: DatedConcert[] = [];
   const counts: Record<string, number> = {};
   const edges = new Map<string, Edge>();
   const venues = new Map<string, Venue & { pairs: Map<string, Edge> }>();
@@ -66,6 +73,11 @@ export function indexConcerts(
       venue.musicians[id] = (venue.musicians[id] || 0) + 1;
     }
     const members = [...ids];
+    timeline.push({
+      date: concert.date,
+      venue: concert.venue,
+      musicians: members,
+    });
     for (let i = 0; i < members.length; i++)
       for (let j = i + 1; j < members.length; j++) {
         increment(edges, members[i], members[j]);
@@ -73,6 +85,7 @@ export function indexConcerts(
       }
   }
   return {
+    timeline: timeline.sort((a, b) => a.date.localeCompare(b.date)),
     counts,
     edges: [...edges.values()],
     venues: [...venues.values()]
@@ -84,7 +97,7 @@ export function indexConcerts(
       matchedMusicians: Object.keys(counts).length,
       unmatchedNames: unmatched.size,
     },
-  } satisfies Pick<ConcertIndex, "counts" | "edges" | "venues"> & {
+  } satisfies Pick<ConcertIndex, "counts" | "edges" | "venues" | "timeline"> & {
     stats: Pick<
       ConcertIndex["meta"],
       "concerts" | "matchedMusicians" | "unmatchedNames"

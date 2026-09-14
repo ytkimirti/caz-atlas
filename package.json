@@ -14,7 +14,8 @@
     "data:validate": "bun run scripts/validate.ts",
     "data:archive": "bun run scripts/archive.ts",
     "data:restore": "bun run scripts/restore.ts",
-    "data:concerts": "bun run scripts/prepare-concerts.ts"
+    "data:concerts": "bun run scripts/prepare-concerts.ts",
+    "test:timeline": "bun run scripts/timeline-check.ts"
   },
   "dependencies": {
     "react": "^19.1.0",
