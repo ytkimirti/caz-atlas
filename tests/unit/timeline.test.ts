@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   concertWindow,
   concertHistogram,
+  concertEnsembles,
   createConcertWindow,
   monthIndex,
   monthValue,
@@ -133,4 +134,18 @@ test("shared URLs clamp out-of-bounds dates and reject invalid or reversed range
     jan + 1,
   ]);
   expect(monthValue(monthIndex("1956-04-23"))).toBe("1956-04");
+});
+
+test("project rosters follow time and venue without leaking future appearances", () => {
+  const history: DatedConcert[] = [
+    { date: "2020-01-01", venue: "A", ensemble: "band", musicians: [1, 2] },
+    { date: "2020-02-01", venue: "A", ensemble: "band", musicians: [2, 3] },
+    { date: "2020-01-01", venue: "B", ensemble: "band", musicians: [4, 5] },
+  ];
+  const known = [{ id: "band", name: "Band", concerts: 3, musicians: {} }];
+  expect(concertEnsembles(history, known, jan, jan, "A")).toEqual([
+    { id: "band", name: "Band", concerts: 1, musicians: { 1: 1, 2: 1 } },
+  ]);
+  expect(concertEnsembles(history, known, mar, mar)).toEqual([]);
+  expect(concertEnsembles(history, known, jan, mar)[0].concerts).toBe(3);
 });

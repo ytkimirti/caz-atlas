@@ -77,6 +77,64 @@ test("ambiguous and absent names are not assigned to a guessed person", () => {
   expect(index.edges).toEqual([]);
 });
 
+test("project credits retain title and concert-specific venue rosters", () => {
+  const show = {
+    ...make("a", ["İlhan Şen", "Asude Şaşmaz", "İlhan Şen"]),
+    title: "Example Quartet",
+  };
+  const index = indexConcerts(
+    nodes,
+    [
+      show,
+      show,
+      {
+        ...make("b", ["Asude Şaşmaz", "Önder Focan"], "Bova"),
+        title: "Example Quartet",
+      },
+      {
+        ...make("future", ["İlhan Şen", "Önder Focan"], "Bova", "2026-10-01"),
+        title: "Future Band",
+      },
+    ],
+    "2026-09-14",
+  );
+  expect(index.ensembles).toEqual([
+    {
+      id: "example quartet",
+      name: "Example Quartet",
+      concerts: 2,
+      musicians: { 1: 1, 2: 2, 3: 1 },
+    },
+  ]);
+  expect(
+    index.venues.find((v) => v.id === "Nardis")!.ensembles[0].musicians,
+  ).toEqual({ 1: 1, 2: 1 });
+  expect(
+    index.venues.find((v) => v.id === "Bova")!.ensembles[0].musicians,
+  ).toEqual({ 2: 1, 3: 1 });
+});
+
+test("solo bills, open sessions and missing titles do not imply a band", () => {
+  const index = indexConcerts(
+    nodes,
+    [
+      { ...make("solo", ["İlhan Şen", "Asude Şaşmaz"]), title: "ilhan sen" },
+      {
+        ...make("jam", ["İlhan Şen", "Asude Şaşmaz"]),
+        title: "Friday Jam Session",
+      },
+      {
+        ...make("unknown", ["Unknown Person", "Asude Şaşmaz"]),
+        title: "Unknown Band",
+      },
+      make("legacy", ["İlhan Şen", "Asude Şaşmaz"]),
+    ],
+    "2026-09-14",
+  );
+  expect(index.ensembles).toEqual([]);
+  expect(index.counts[2]).toBe(4);
+});
+
 test("timeline shares deduplication, matching and past-only rules with concert totals", () => {
   const show = make("a", ["İlhan Şen", "ilhan sen", "Same Name"]);
   const index = indexConcerts(

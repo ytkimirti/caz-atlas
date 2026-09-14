@@ -1,4 +1,4 @@
-import type { DatedConcert, Edge } from "./types";
+import type { DatedConcert, Edge, Ensemble } from "./types";
 import { edgeKey } from "./graph";
 
 export const monthIndex = (date: string) => {
@@ -181,4 +181,34 @@ export function concertHistogram(
       bins[i]++;
   }
   return bins;
+}
+
+// Keep project rosters and concert totals inside the same visible time window.
+export function concertEnsembles(
+  events: DatedConcert[],
+  known: Ensemble[],
+  start: number,
+  end: number,
+  venue = "",
+) {
+  const names = new Map(known.map((e) => [e.id, e.name]));
+  const groups = new Map<string, Ensemble>();
+  for (const event of events) {
+    if (!event.ensemble || (venue && event.venue !== venue)) continue;
+    const month = monthIndex(event.date);
+    if (month < start || month > end) continue;
+    const name = names.get(event.ensemble);
+    if (!name) continue;
+    let ensemble = groups.get(event.ensemble);
+    if (!ensemble) {
+      ensemble = { id: event.ensemble, name, concerts: 0, musicians: {} };
+      groups.set(event.ensemble, ensemble);
+    }
+    ensemble.concerts++;
+    for (const id of event.musicians)
+      ensemble.musicians[id] = (ensemble.musicians[id] || 0) + 1;
+  }
+  return [...groups.values()].sort(
+    (a, b) => b.concerts - a.concerts || a.id.localeCompare(b.id),
+  );
 }

@@ -1,27 +1,9 @@
 import type { Atlas, Edge, Musician } from "./types";
 
-// A mutual top-k graph bounds each person's visible degree, even for hubs.
-// The full graph is retained separately for hover and shortest paths.
-export function strongestEdges(edges: Edge[], limit: number): Edge[] {
-  if (limit <= 0) return [];
-  const ranked = [...edges].sort(
-    (a, b) => b.weight - a.weight || a.source - b.source || a.target - b.target,
-  );
-  const choices = new Map<number, Set<string>>();
-  for (const edge of ranked) {
-    const key = edgeKey(edge.source, edge.target);
-    for (const id of [edge.source, edge.target]) {
-      const set = choices.get(id) || new Set<string>();
-      if (set.size < limit) set.add(key);
-      choices.set(id, set);
-    }
-  }
-  return ranked.filter((edge) => {
-    const key = edgeKey(edge.source, edge.target);
-    return (
-      choices.get(edge.source)?.has(key) && choices.get(edge.target)?.has(key)
-    );
-  });
+// Weight is the number of distinct concerts shared by the two musicians.
+// Keep the full graph separately for hover and shortest paths.
+export function edgesBySharedConcerts(edges: Edge[], minimum: number): Edge[] {
+  return edges.filter((edge) => edge.weight >= minimum);
 }
 
 export function filterGraph(

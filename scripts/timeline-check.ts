@@ -40,7 +40,7 @@ try {
     exact: true,
   });
   await search.fill(selected.name);
-  await page.getByRole("option").first().click();
+  await page.locator(".search-results").getByRole("option").first().click();
   await expect(canvas).not.toHaveAttribute("data-selected-position", "");
   const position = await canvas.getAttribute("data-selected-position");
   await show("2020-01");

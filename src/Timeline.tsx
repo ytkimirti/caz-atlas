@@ -360,7 +360,7 @@ export default function Timeline({
             <strong>{number(musicians)}</strong> müzisyen
           </span>
           <span>
-            <strong>{number(edges)}</strong> güçlü bağ
+            <strong>{number(edges)}</strong> bağ
           </span>
           <span title="Seçilen mekan ve tarihlerde arşivlenen konserler">
             <strong>{number(concerts)}</strong> konser

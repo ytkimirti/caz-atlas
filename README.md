@@ -15,7 +15,7 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 ## Kullanım
 
 - Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca seçilen tarihlerde konser kaydı bulunan tüm isimler görünür.
-- Genel görünümde her iki müzisyenin de en güçlü iki bağı arasında bulunan ilişkiler çizilir. Filtrelerden sınır 1, 2, 3 veya 5 yapılabilir. Böylece tek bir kişi bütün grafı çizgilerle kaplamaz.
+- Genel görünümde **en az 5 farklı konserde birlikte çalan** müzisyenlerin bağları çizilir. Ortak konser eşiği 1, 2, 5 veya 10 seçilebilir; 1 tüm bağları gösterir. Kişi başına bağ sınırı yoktur. Mekan seçiliyken yalnızca o mekandaki ortak konserler sayılır. Eşik URL’de `shared` parametresinde saklanır.
 - Bir müzisyenin üzerine gelince filtrelenmiş graf içindeki tüm doğrudan bağları görünür. Tıklayınca seçim sabitlenir.
 - Biri seçiliyken başka bir müzisyenin üzerine gelmek aralarındaki **en az bağlantılı yolu** vurgular. Bu hesap, normalde gizlenen zayıf bağları da içerir. Yol mevcut filtrelere uyar.
 - Arama sonuçlarında ve seçili kişinin bağlantı listesinde hover veya klavye odağı da yol gösterir. Türkçe karakter kullanmadan arama yapılabilir.
@@ -24,11 +24,14 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 - Oynat düğmesi seçilen aralığın başından itibaren ağı biriktirerek gösterir. Duraklatma, 0,5× / 1× / 2× / 4× hız ve son 1 / 5 / 10 / 20 yıl kısayolları vardır. Tarih değişirken yerleşim ve kamera sabit kalır; yeni müzisyen ve bağlar yumuşakça belirir. Hareket azaltma tercihinde geçişler kapatılır.
 - Aralık uçları klavyeyle birer ay, Shift ile birer yıl değişir; Home ve End sınıra götürür. Tarih aralığı ve oynatma konumu `from`, `to`, `at` parametreleriyle URL'de saklanır. Konser eşiği, mekan ve enstrüman filtreleri aynı tarih görünümüne uygulanır.
 - Enstrüman filtresi diğer filtrelerle birlikte çalışır. Filtreler ve seçili kişi URL'de saklanır.
+- **Yerleşim** menüsünden Topluluklar (varsayılan), ForceAtlas2, D3 veya ngraph seçilebilir. Topluluklar, sık birlikte çalan gruplara ayrı alan açar. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
 - Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Mobilde filtreler kaydırılabilir bir overlay'dir.
 
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
 
-Yerleşim, filtrelenen kişilerin güçlü ilişkilerinden Web Worker'da hesaplanır. Çizgileri sadeleştirmek bağlantı verisini silmez. Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Mesafeler coğrafya veya zaman ifade etmez.
+Yerleşim Web Worker'da hesaplanır; motor veya filtre değişince önceki hesap iptal edilir. Topluluklar görünümü tam filtrelenmiş konser grafından gruplar bulur ve her gruba ayrı alan ayırır. Diğer motorlar güçlü ilişkilerle birlikte toplulukları birleştiren zayıf köprüleri korur. Bağlantısız kişiler ayrı alanlara yerleştirilir. Gruplar resmi müzik grupları değildir; gruplar arası uzaklık ilişki gücünü ölçmez. Çizgileri sadeleştirmek bağlantı verisini silmez. Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Mesafeler coğrafya veya zaman ifade etmez.
+
+Motor karşılaştırması, seçim gerekçesi ve ölçümler: [yerleşim araştırması](docs/layout-research.md). Tüm arşiv ekrana sığdırıldığında yoğun grupları incelemek için yakınlaştırma veya filtreler gerekir.
 
 ## Veri
 
@@ -79,10 +82,25 @@ bun test
 bun run build
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
 ATLAS_TEST_URL=http://localhost:5173 bun run test:timeline
+ATLAS_TEST_URL=http://localhost:5173 bun run test:layouts
+bun run benchmark:layouts
 ```
 
-Birim testleri; bağ seyrekleştirmeyi, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
+Birim testleri; ortak konser eşiğini, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
 
 UI testi yalnızca yerel sunucuda, kurulu Chrome ile çalışır. Canvas hover, seçiliyken hover yolu, filtreler, URL'den geri yükleme, mobil overlay'ler, klavye kullanımı ve veri yükleme hatasından dönüşü doğrular. Ekran görüntüleri `.cache/minimal-*.png` altında tutulur.
 
 Zaman çizelgesi testi, gerçek veriden beklenen tarih ve mekan sonuçlarını, sabit düğüm konumlarını, animasyon geçişini, oynat/duraklat davranışını, URL geri yüklemeyi, aralık sürüklemeyi ve mobil dokunmayı doğrular. Ekran görüntüleri `.cache/timeline-*.png` altında tutulur.
+
+Grup / proje adları grafın üzerinde etiketlenir. Bir müzisyen seçildiğinde veya üzerine gelindiğinde ilgili etiketler ve kadroya uzanan kesikli çizgiler belirginleşir. Seçim paneli ilgili tüm projeleri ve konser sayılarını listeler. Filtrelerde grup etiketleri kapatılabilir; mekan filtresi yalnızca o mekandaki kadroları kullanır.
+
+Etiketler konser başlıklarından alınır, kalıcı grup üyeliği anlamına gelmez. Tek müzisyenin adıyla verilen konserler, genel jam session / açık sahne başlıkları ve iki müzisyenle eşleşmeyen kadrolar etiket oluşturmaz. Yakınlaşınca daha fazla etiket görünür; seçili müzisyen için graf üzerinde en fazla üç proje, panelde tamamı gösterilir.
+
+Başlıkları mevcut HTML önbelleğinden, ağ erişimi olmadan yeniden çıkarmak için:
+
+```sh
+python3 scripts/collect-concerts.py --from-cache
+bun run data:concerts --build
+```
+
+Bu işlem kesit tarihini korur ve eksik önbellekte durur.
