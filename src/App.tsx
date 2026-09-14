@@ -1007,8 +1007,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
                       </summary>
                       <div className="ensemble-roster collaborators">
                         <div className="collaborator-heading">
-                          <span>Konser kadroları</span>
-                          <small>Bu projede</small>
+                          <span>Kadro</span>
+                          <span>Konser</span>
                         </div>
                         {Object.entries(ensemble.musicians)
                           .sort((a, b) => b[1] - a[1])
@@ -1033,7 +1033,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
                                 onBlur={() => setHoveredId(null)}
                               >
                                 <span>{member.name}</span>
-                                <small>{number(concerts)} konser</small>
+                                <small>{number(concerts)}</small>
                               </button>
                             );
                           })}
@@ -1042,12 +1042,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
                   </li>
                 ))}
               </ul>
-              <p>Arşivdeki konser adları ve o konserlerin kadroları.</p>
             </div>
           )}
-          <p className="selection-hint">
-            Başka bir ismin üzerine gel, aralarındaki yolu gör.
-          </p>
         </section>
       )}
 
