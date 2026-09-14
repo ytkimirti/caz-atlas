@@ -1,5 +1,5 @@
 /** Builds a local, reproducible artifact from the cached public responses. */
-import { readdir, rename } from "node:fs/promises";
+import { rename } from "node:fs/promises";
 import {
   forceSimulation,
   forceLink,
@@ -11,9 +11,23 @@ import {
 import { mergeEdge, adjacency } from "../src/graph";
 import { groups } from "../src/types";
 import type { Atlas, Musician, Edge } from "../src/types";
+if (!Bun.argv.includes("--build")) {
+  console.log(
+    "Usage: bun run scripts/prepare.ts --build\nReplaces public/data/atlas.json from a complete local network cache. No network or database access.",
+  );
+  process.exit(0);
+}
 const cache = new URL("../.cache/", import.meta.url).pathname;
 const keys: string[] = await Bun.file(cache + "keys.json").json();
 const directory = await Bun.file(cache + "directory.json").json();
+if (!keys.length) throw new Error("Cannot build an empty collection");
+for (const key of keys)
+  if (
+    !(await Bun.file(
+      cache + "networks/" + encodeURIComponent(key) + ".json",
+    ).exists())
+  )
+    throw new Error(`Cannot build incomplete collection: ${key}`);
 const nodes = new Map<number, Musician>(),
   edges = new Map<string, Edge>();
 const covered = new Set<string>(),
@@ -57,11 +71,11 @@ function add(n: RawNode, ownProfile = false) {
   });
   if (ownProfile) authoritative.add(n.compound_key);
 }
-for (const file of (await readdir(cache + "networks"))
-  .filter((f) => f.endsWith(".json"))
+for (const file of keys
+  .map((key) => encodeURIComponent(key) + ".json")
   .sort()) {
-  const data = await Bun.file(cache + "networks/" + file).json();
   const key = decodeURIComponent(file.slice(0, -5));
+  const data = await Bun.file(cache + "networks/" + file).json();
   if (data.unavailable) {
     unavailable.add(key);
     if (data.info) add(data.info, true);

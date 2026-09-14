@@ -193,6 +193,7 @@ export default function Timeline({
             className={`timeline-chart ${range[0] === range[1] ? "is-collapsed" : ""}`}
             ref={track}
             onPointerDown={(event) => {
+              if (event.button !== 0) return;
               startDrag(event, "cursor");
               onCursor(Math.max(range[0], Math.min(range[1], monthAt(event))));
             }}

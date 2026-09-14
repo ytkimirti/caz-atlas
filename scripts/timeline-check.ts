@@ -33,6 +33,16 @@ try {
     page.getByRole("region", { name: "Zaman çizelgesi" }),
   ).toBeVisible();
   await expect(start).toHaveValue("1956-04");
+  const initialCursor = await scrubber.inputValue();
+  const initialUrl = page.url();
+  for (const button of ["right", "middle"] as const) {
+    await page.locator(".timeline-chart").click({
+      button,
+      position: { x: 100, y: 20 },
+    });
+    await expect(scrubber).toHaveValue(initialCursor);
+    await expect(page).toHaveURL(initialUrl);
+  }
   await page.screenshot({ path: ".cache/timeline-desktop.png" });
   const selected = atlas.nodes.find((n) => n.key === "OnderFocan")!;
   const search = page.getByRole("combobox", {

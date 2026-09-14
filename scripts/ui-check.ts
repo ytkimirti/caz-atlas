@@ -384,6 +384,20 @@ try {
   expect(target).toBeTruthy();
   const expectedPath = shortestPath(graph, from.id, target.id);
   await search.fill(target.name);
+  const targetOption = page
+    .locator(".search-results")
+    .getByRole("option")
+    .first();
+  await search.press("Tab"); // Clear button.
+  await page.keyboard.press("Tab"); // First result, without moving the mouse.
+  await expect(targetOption).toBeFocused();
+  await expect(canvas).toHaveAttribute("data-path", expectedPath.join(","));
+  await targetOption.press("Escape");
+  await expect(page.locator(".search-results")).toHaveCount(0);
+  await expect(canvas).toHaveAttribute("data-path", "");
+  await expect(page.locator(".selection-panel h2")).toHaveText("Asude Şaşmaz");
+  await expect(search).toBeFocused();
+  await search.press("ArrowDown");
   await page.locator(".search-results").getByRole("option").first().hover();
   await expect(page.locator(".graph-status")).toBeEmpty();
   await expect(canvas).toHaveAttribute("data-path", expectedPath.join(","));

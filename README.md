@@ -78,6 +78,8 @@ Her iki komut da gerekli bayrak olmadan kullanım bilgisini yazıp çıkar. Veri
 
 Önceki ağ arşivini doğrulamak için `bun run data:validate`; arşivden yerel önbellek çıkarmak için `bun run data:restore --restore` kullanılır. Bunlar yeni konser kesitini değiştirmez.
 
+Önceki ağ verisini yeniden üretmek için `bun run data:build --build`, önbelleği arşivlemek için `bun run data:archive --archive` kullanılır. Bu komutlar mevcut atlası veya arşivi değiştirir; bayrak olmadan yalnızca kullanım bilgisini yazıp çıkar. Boş veya eksik ağ önbelleğiyle atlas yeniden üretilmez. Yeniden üretim yalnızca `.cache/keys.json` içindeki ağ dosyalarını okur; eski önbellek dosyaları dahil edilmez.
+
 ## Kontroller
 
 ```sh

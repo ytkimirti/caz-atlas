@@ -1,8 +1,17 @@
 /** Packages already-downloaded source responses. Local files only, no network. */
 import { mkdir, rename, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
+if (!Bun.argv.includes("--archive")) {
+  console.log(
+    "Usage: bun run scripts/archive.ts --archive\nReplaces the bundled network archive from the local cache. No network or database access.",
+  );
+  process.exit(0);
+}
 const root = new URL("../", import.meta.url).pathname;
 const keys: string[] = await Bun.file(root + ".cache/keys.json").json();
+if (!keys.length) throw new Error("Cannot archive an empty collection");
+const directory = await Bun.file(root + ".cache/directory.json").text();
+JSON.parse(directory);
 const rows: string[] = [],
   timestamps: number[] = [];
 let available = 0,
@@ -53,8 +62,5 @@ await Bun.write(
   JSON.stringify(manifest, null, 2) + "\n",
 );
 await Bun.write(root + "data/musician-keys.json", JSON.stringify(keys));
-await Bun.write(
-  root + "data/directory.json",
-  await Bun.file(root + ".cache/directory.json").text(),
-);
+await Bun.write(root + "data/directory.json", directory);
 console.log(JSON.stringify(manifest, null, 2));

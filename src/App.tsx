@@ -93,6 +93,14 @@ function MusicianSearch({
     <div
       className="search-wrap"
       ref={wrap}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          wrap.current?.querySelector("input")?.focus();
+          setOpen(false);
+          onHover(null);
+        }
+      }}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
           setOpen(false);
@@ -124,11 +132,6 @@ function MusicianSearch({
             onHover(null);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              setOpen(false);
-              onHover(null);
-            }
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
               setOpen(true);
@@ -190,6 +193,10 @@ function MusicianSearch({
               role="option"
               aria-selected={i === cursor}
               className={i === cursor ? "highlighted" : ""}
+              onFocus={() => {
+                setCursor(i);
+                onHover(n.id);
+              }}
               onMouseMove={() => {
                 setCursor(i);
                 onHover(n.id);
