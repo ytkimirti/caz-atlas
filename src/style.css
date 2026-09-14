@@ -449,6 +449,8 @@ input[type="checkbox"] {
   right: 24px;
   top: 80px;
   width: 274px;
+  max-height: calc(100dvh - 180px);
+  overflow-y: auto;
   padding: 16px;
   z-index: 3;
 }
@@ -806,4 +808,34 @@ input[type="checkbox"] {
       background 0.12s,
       border-color 0.12s;
   }
+}
+
+.musician-ensembles {
+  margin-bottom: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e4da;
+}
+.musician-ensembles ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.musician-ensembles li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  color: #536c53;
+}
+.musician-ensembles small {
+  white-space: nowrap;
+  color: #858a7e;
+}
+.musician-ensembles p {
+  font-size: 10px;
+  color: #858a7e;
+  line-height: 1.5;
 }

@@ -229,6 +229,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       : 2,
   );
   const [labels, setLabels] = useState(true);
+  const [showEnsembles, setShowEnsembles] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [venueQuery, setVenueQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(
@@ -242,6 +243,14 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     [concerts, venueId],
   );
   const counts = venue?.musicians ?? concerts.counts;
+  const ensembles = venue?.ensembles ?? concerts.ensembles ?? [];
+  const musicianEnsembles = useMemo(
+    () =>
+      ensembles
+        .filter((e) => selectedId !== null && e.musicians[selectedId])
+        .sort((a, b) => b.musicians[selectedId!] - a.musicians[selectedId!]),
+    [ensembles, selectedId],
+  );
   const graph = useMemo(
     () =>
       filterGraph(
@@ -357,6 +366,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         data={graph}
         edges={edges}
         counts={counts}
+        ensembles={ensembles}
+        showEnsembles={showEnsembles}
         selected={selected}
         hovered={hovered}
         path={path}
@@ -595,6 +606,14 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               />
               İsimleri göster
             </label>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={showEnsembles}
+                onChange={(e) => setShowEnsembles(e.target.checked)}
+              />
+              Grup / proje adlarını göster
+            </label>
           </div>
           <div className="filter-footer">
             <span>{number(graph.nodes.length)} müzisyen</span>
@@ -635,6 +654,22 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             {number(counts[musician.id] ?? 0)} konser ·{" "}
             {number(collaborators.length)} bağ
           </p>
+          {musicianEnsembles.length > 0 && (
+            <div className="musician-ensembles">
+              <span className="section-caption">GRUP / PROJE</span>
+              <ul>
+                {musicianEnsembles.map((ensemble) => (
+                  <li key={ensemble.id}>
+                    <span>{ensemble.name}</span>
+                    <small>
+                      {number(ensemble.musicians[musician.id])} konser
+                    </small>
+                  </li>
+                ))}
+              </ul>
+              <p>Arşivdeki konser adları ve o konserlerin kadroları.</p>
+            </div>
+          )}
           <div className="collaborator-heading">
             <span>En çok birlikte çaldığı</span>
             <small>Ortak konser</small>
