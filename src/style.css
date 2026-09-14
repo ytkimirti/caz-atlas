@@ -1151,3 +1151,125 @@ select {
     transition: none;
   }
 }
+
+.layout-controls {
+  position: absolute;
+  left: 28px;
+  top: 140px;
+  width: 238px;
+  padding: 12px;
+}
+.layout-controls > label {
+  display: block;
+  font-size: 11px;
+  color: #686e65;
+  margin-bottom: 6px;
+}
+.layout-controls select {
+  width: 100%;
+  border: 1px solid #dfe2d7;
+  padding: 7px;
+  color: inherit;
+  background: #fafaf6;
+}
+.layout-controls p {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #686e65;
+  margin-top: 8px;
+}
+.layout-spacing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.layout-spacing label {
+  flex: 1;
+  font-size: 11px;
+}
+.layout-spacing select {
+  width: 120px;
+}
+.layout-controls .layout-feedback {
+  color: #38614a;
+}
+@media (max-width: 700px) {
+  .layout-controls {
+    top: auto;
+    bottom: 84px;
+    left: 12px;
+    width: 192px;
+    padding: 8px;
+  }
+  .layout-controls > label,
+  #layout-description {
+    display: none;
+  }
+  .layout-controls .layout-feedback {
+    font-size: 10px;
+    margin-top: 4px;
+  }
+  .layout-spacing {
+    margin-top: 5px;
+  }
+  .atlas:has(.filter-panel) .layout-controls,
+  .atlas:has(.selection-panel) .layout-controls {
+    display: none;
+  }
+}
+
+/* Keep calculation feedback visible above filters and selection panels. */
+.layout-loading {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 50;
+  pointer-events: none;
+}
+.layout-loading-track {
+  height: 4px;
+  overflow: hidden;
+  background: #dce5d9;
+}
+.layout-loading-track > span {
+  display: block;
+  width: 35%;
+  height: 100%;
+  background: #38614a;
+  animation: layout-loading 1.4s ease-in-out infinite;
+}
+.layout-loading-label {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border: 1px solid #dce5d9;
+  border-radius: 6px;
+  background: #fafaf6f5;
+  color: #38614a;
+  font-size: 11px;
+  white-space: nowrap;
+}
+@keyframes layout-loading {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(386%);
+  }
+}
+@media (max-width: 700px) {
+  .layout-loading-label {
+    left: auto;
+    right: 12px;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .layout-loading-track > span {
+    animation: none;
+    width: 100%;
+    opacity: 0.55;
+  }
+}

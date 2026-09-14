@@ -1,0 +1,286 @@
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+} from "d3-force";
+import { UndirectedGraph } from "graphology";
+import louvain from "graphology-communities-louvain";
+import forceAtlas2 from "graphology-layout-forceatlas2";
+import createGraph from "ngraph.graph";
+import createLayout from "ngraph.forcelayout";
+import type { Edge } from "./types";
+import type { LayoutEngine } from "./layout-options";
+
+export interface LayoutNode {
+  id: number;
+  count: number;
+}
+export interface Position {
+  id: number;
+  x: number;
+  y: number;
+}
+export interface LayoutRequest {
+  nodes: LayoutNode[];
+  edges: Edge[];
+  engine: LayoutEngine;
+  spacing: number;
+}
+export type LayoutResponse =
+  { status: "ready"; positions: Position[] } | { status: "fallback" };
+type Particle = LayoutNode & Position & { vx?: number; vy?: number };
+
+// Retain each person's strongest ties and a maximum spanning forest. Weak
+// bridges still connect communities, without thousands of springs into hubs.
+export function layoutLinks(nodes: LayoutNode[], edges: Edge[]): Edge[] {
+  const parent = new Map(nodes.map((n) => [n.id, n.id]));
+  const root = (id: number): number => {
+    let current = id;
+    while (parent.get(current) !== current) current = parent.get(current)!;
+    while (id !== current) {
+      const next = parent.get(id)!;
+      parent.set(id, current);
+      id = next;
+    }
+    return current;
+  };
+  const degree = new Map<number, number>();
+  return [...edges]
+    .filter(
+      (e) =>
+        e.source !== e.target && parent.has(e.source) && parent.has(e.target),
+    )
+    .sort(
+      (a, b) =>
+        b.weight - a.weight || a.source - b.source || a.target - b.target,
+    )
+    .filter((e) => {
+      const a = degree.get(e.source) ?? 0,
+        b = degree.get(e.target) ?? 0;
+      degree.set(e.source, a + 1);
+      degree.set(e.target, b + 1);
+      const ra = root(e.source),
+        rb = root(e.target);
+      if (ra !== rb) parent.set(ra, rb);
+      return a < 3 || b < 3 || ra !== rb;
+    })
+    .map((e) => ({ ...e }));
+}
+
+function simulate(
+  nodes: Particle[],
+  edges: Edge[],
+  engine: LayoutEngine,
+  spacing: number,
+) {
+  if (nodes.length < 2) return;
+  const iterations = nodes.length > 5000 ? 200 : 320;
+  if (engine === "d3" || engine === "communities") {
+    const simulation = forceSimulation(nodes)
+      .force(
+        "link",
+        forceLink<Particle, Edge>(edges.map((e) => ({ ...e })))
+          .id((n) => n.id)
+          .distance(65),
+      )
+      .force(
+        "charge",
+        forceManyBody<Particle>()
+          .strength(-180 * spacing)
+          .theta(0.9),
+      )
+      .force("center", forceCenter(0, 0))
+      .force("collision", forceCollide<Particle>(12 * spacing).iterations(2))
+      .stop();
+    simulation.tick(iterations);
+  } else if (engine === "forceatlas2") {
+    const graph = new UndirectedGraph();
+    for (const n of nodes) graph.addNode(n.id, { x: n.x, y: n.y, size: 3 });
+    for (const e of edges)
+      graph.mergeEdge(e.source, e.target, { weight: Math.log2(1 + e.weight) });
+    const positions = forceAtlas2(graph, {
+      iterations,
+      settings: {
+        ...forceAtlas2.inferSettings(graph),
+        linLogMode: true,
+        outboundAttractionDistribution: true,
+        scalingRatio: 8 * spacing,
+        gravity: 0.6,
+        strongGravityMode: false,
+        barnesHutOptimize: nodes.length > 300,
+        slowDown: 5,
+        edgeWeightInfluence: 0.5,
+      },
+    });
+    for (const n of nodes) Object.assign(n, positions[n.id]);
+  } else {
+    const graph = createGraph();
+    for (const n of nodes) graph.addNode(n.id);
+    for (const e of edges) graph.addLink(e.source, e.target);
+    const layout = createLayout(graph, {
+      dimensions: 2,
+      springLength: 65,
+      springCoefficient: 0.0006,
+      gravity: -12 * spacing,
+      dragCoefficient: 0.9,
+      timeStep: 20,
+      theta: 0.8,
+    });
+    try {
+      for (const n of nodes) layout.setNodePosition(n.id, n.x, n.y);
+      for (let i = 0; i < iterations * 2; i++) if (layout.step()) break;
+      for (const n of nodes) {
+        const p = layout.getNodePosition(n.id);
+        n.x = p.x;
+        n.y = p.y;
+      }
+    } finally {
+      layout.dispose();
+    }
+  }
+
+  // Normalize each component by its population, not its edge lengths. A few
+  // very long springs must not shrink a dense community into a tiny dot.
+  const median = (values: number[]) =>
+    values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+  const centerX = median(nodes.map((n) => n.x));
+  const centerY = median(nodes.map((n) => n.y));
+  const typicalRadius =
+    median(nodes.map((n) => Math.hypot(n.x - centerX, n.y - centerY))) || 1;
+  const scale = (14 * Math.sqrt(nodes.length)) / typicalRadius;
+  for (const n of nodes) {
+    const dx = n.x - centerX,
+      dy = n.y - centerY;
+    const radius = Math.hypot(dx, dy);
+    // Compress only long tails, retaining directions and local communities.
+    const limit = typicalRadius * 2;
+    const compressed =
+      radius > limit
+        ? limit + limit * Math.log1p((radius - limit) / limit)
+        : radius;
+    const factor = radius ? (scale * compressed) / radius : scale;
+    n.x = dx * factor;
+    n.y = dy * factor;
+    n.vx = 0;
+    n.vy = 0;
+  }
+  const collision = forceSimulation(nodes)
+    .velocityDecay(0.6)
+    .force(
+      "collision",
+      forceCollide<Particle>(
+        (n) => (8 + Math.log2(1 + n.count) * 2) * spacing,
+      ).iterations(4),
+    )
+    .stop();
+  collision.tick(80);
+}
+
+export function computeLayout(request: LayoutRequest): Position[] {
+  const { engine, spacing } = request;
+  const nodes: Particle[] = [...request.nodes]
+    .sort((a, b) => b.count - a.count || a.id - b.id)
+    .map((n, i) => ({
+      ...n,
+      x: Math.cos(i * 2.3999632297) * Math.sqrt(i) * 19,
+      y: Math.sin(i * 2.3999632297) * Math.sqrt(i) * 19,
+    }));
+  if (!nodes.length) return [];
+  const edges = layoutLinks(nodes, request.edges);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const neighbors = new Map(nodes.map((n) => [n.id, [] as number[]]));
+  for (const e of edges) {
+    neighbors.get(e.source)!.push(e.target);
+    neighbors.get(e.target)!.push(e.source);
+  }
+  const componentOf = new Map<number, number>();
+  let components: { nodes: Particle[]; edges: Edge[] }[] = [];
+  for (const n of nodes) {
+    if (componentOf.has(n.id)) continue;
+    const index = components.length;
+    const ids = [n.id];
+    componentOf.set(n.id, index);
+    for (let i = 0; i < ids.length; i++) {
+      for (const id of neighbors.get(ids[i])!) {
+        if (componentOf.has(id)) continue;
+        componentOf.set(id, index);
+        ids.push(id);
+      }
+    }
+    components.push({ nodes: ids.map((id) => byId.get(id)!), edges: [] });
+  }
+  for (const e of edges) components[componentOf.get(e.source)!].edges.push(e);
+  if (engine === "communities") {
+    const graph = new UndirectedGraph();
+    for (const n of nodes) graph.addNode(n.id);
+    for (const e of request.edges) {
+      if (e.source !== e.target && byId.has(e.source) && byId.has(e.target))
+        graph.mergeEdge(e.source, e.target, {
+          weight: Math.log2(1 + e.weight),
+        });
+    }
+    const membership = louvain(graph, { randomWalk: false, resolution: 1.5 });
+    const groups = new Map<number, { nodes: Particle[]; edges: Edge[] }>();
+    for (const n of nodes) {
+      const id = membership[n.id];
+      if (!groups.has(id)) groups.set(id, { nodes: [], edges: [] });
+      groups.get(id)!.nodes.push(n);
+    }
+    for (const e of edges) {
+      if (membership[e.source] === membership[e.target])
+        groups.get(membership[e.source])!.edges.push(e);
+    }
+    components = [...groups.values()];
+  }
+  const boxes = components
+    .map((c) => {
+      simulate(c.nodes, c.edges, engine, spacing);
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      for (const n of c.nodes) {
+        if (!Number.isFinite(n.x) || !Number.isFinite(n.y))
+          throw new Error("Non-finite layout position");
+        minX = Math.min(minX, n.x);
+        minY = Math.min(minY, n.y);
+        maxX = Math.max(maxX, n.x);
+        maxY = Math.max(maxY, n.y);
+      }
+      const padding = 28 * spacing;
+      return {
+        ...c,
+        minX,
+        minY,
+        padding,
+        width: maxX - minX + padding * 2,
+        height: maxY - minY + padding * 2,
+      };
+    })
+    .sort((a, b) => b.height - a.height || b.width - a.width);
+  // Pack disconnected components, including isolates, into separate boxes.
+  // They cannot drift to infinity and shrink the connected graph when fitting.
+  const rowWidth = Math.max(
+    ...boxes.map((b) => b.width),
+    Math.sqrt(boxes.reduce((area, b) => area + b.width * b.height, 0) * 1.5),
+  );
+  let x = 0,
+    y = 0,
+    rowHeight = 0;
+  for (const box of boxes) {
+    if (x > 0 && x + box.width > rowWidth) {
+      x = 0;
+      y += rowHeight;
+      rowHeight = 0;
+    }
+    for (const n of box.nodes) {
+      n.x += x - box.minX + box.padding;
+      n.y += y - box.minY + box.padding;
+    }
+    x += box.width;
+    rowHeight = Math.max(rowHeight, box.height);
+  }
+  return nodes.map(({ id, x, y }) => ({ id, x, y }));
+}

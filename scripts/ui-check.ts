@@ -134,6 +134,23 @@ try {
   await search.blur();
   await page.screenshot({ path: ".cache/minimal-desktop.png" });
 
+  // Switching layouts runs a fresh worker and persists a valid selection.
+  for (const engine of ["d3", "ngraph", "forceatlas2", "communities"]) {
+    await page.getByLabel("Yerleşim", { exact: true }).selectOption(engine);
+    await expect(canvas).toHaveAttribute("data-engine", engine);
+    await ready();
+    await expect(page.getByRole("status")).toContainText("Yerleşim hazır");
+    await page.screenshot({ path: `.cache/layout-${engine}.png` });
+  }
+  await page.getByLabel("Aralık", { exact: true }).selectOption("1.6");
+  await ready();
+  await expect(page).toHaveURL(/spacing=1.6/);
+  await page.reload();
+  await ready();
+  await expect(page.getByLabel("Aralık", { exact: true })).toHaveValue("1.6");
+  await page.getByLabel("Aralık", { exact: true }).selectOption("1");
+  await ready();
+
   await choose("asude sasmaz");
   await expect(page.locator(".selection-panel h2")).toHaveText("Asude Şaşmaz");
   await expect(page).toHaveURL(/m=AsudeSasmaz/);

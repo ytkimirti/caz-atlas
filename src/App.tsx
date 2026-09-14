@@ -11,6 +11,14 @@ import {
   X,
 } from "lucide-react";
 import Network from "./Network";
+import {
+  DEFAULT_ENGINE,
+  layoutEngines,
+  parseEngine,
+  parseSpacing,
+  spacingOptions,
+} from "./layout-options";
+import type { LayoutStatus } from "./layout-options";
 import type { NetworkHandle } from "./Network";
 import type { Atlas, ConcertIndex, Musician } from "./types";
 import { groupInfo, groups, normalize, number } from "./types";
@@ -261,6 +269,11 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       ? Number(params.get("shared"))
       : 5,
   );
+  const [engine, setEngine] = useState(() => parseEngine(params.get("engine")));
+  const [spacing, setSpacing] = useState(() =>
+    parseSpacing(params.get("spacing")),
+  );
+  const [layoutStatus, setLayoutStatus] = useState<LayoutStatus>("pending");
   const [labels, setLabels] = useState(true);
   const [showEnsembles, setShowEnsembles] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -351,13 +364,24 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     if (venueId) query.set("venue", venueId);
     if (instrument) query.set("instrument", instrument);
     if (minSharedConcerts !== 5) query.set("shared", String(minSharedConcerts));
+    if (engine !== DEFAULT_ENGINE) query.set("engine", engine);
+    if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
     window.history.replaceState(
       null,
       "",
       window.location.pathname + (query.size ? "?" + query : ""),
     );
-  }, [minConcerts, venueId, instrument, minSharedConcerts, selected, byId]);
+  }, [
+    minConcerts,
+    venueId,
+    instrument,
+    minSharedConcerts,
+    selected,
+    byId,
+    engine,
+    spacing,
+  ]);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -395,6 +419,18 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
 
   return (
     <main className="atlas">
+      {layoutStatus === "pending" && (
+        <div className="layout-loading">
+          <div
+            className="layout-loading-track"
+            role="progressbar"
+            aria-label="Yerleşim hesaplanıyor"
+          >
+            <span />
+          </div>
+          <span className="layout-loading-label">Yerleşim hesaplanıyor…</span>
+        </div>
+      )}
       <Network
         ref={network}
         data={graph}
@@ -407,9 +443,51 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         hovered={hovered}
         path={path}
         labels={labels}
+        engine={engine}
+        spacing={spacing}
+        onLayoutStatus={setLayoutStatus}
         onSelect={select}
         onHover={setHoveredId}
       />
+      <div className="layout-controls surface" aria-label="Graf yerleşimi">
+        <label htmlFor="layout-engine">Yerleşim</label>
+        <select
+          id="layout-engine"
+          value={engine}
+          onChange={(e) => setEngine(parseEngine(e.target.value))}
+          aria-describedby="layout-description"
+        >
+          {layoutEngines.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </select>
+        <p id="layout-description">
+          {layoutEngines.find((option) => option.id === engine)!.description}
+        </p>
+        <div className="layout-spacing">
+          <label htmlFor="layout-spacing">Aralık</label>
+          <select
+            id="layout-spacing"
+            value={spacing}
+            onChange={(e) => setSpacing(parseSpacing(e.target.value))}
+          >
+            {spacingOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="layout-feedback" role="status">
+          {layoutStatus === "pending"
+            ? "Yerleşim hesaplanıyor…"
+            : layoutStatus === "fallback"
+              ? "Yerleşim hesaplanamadı. Arşiv konumları gösteriliyor; başka bir yerleşim seçebilirsin."
+              : "Yerleşim hazır"}
+        </p>
+      </div>
       <div className="identity">
         <h1 className="wordmark">
           caz<span>graf</span>
