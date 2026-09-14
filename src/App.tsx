@@ -7,6 +7,16 @@ import {
   X,
 } from "lucide-react";
 import Network from "./Network";
+import Timeline from "./Timeline";
+import {
+  concertHistogram,
+  concertEnsembles,
+  createConcertWindow,
+  monthIndex,
+  monthValue,
+  readRange,
+} from "./chronology";
+import type { DateRange } from "./chronology";
 import {
   DEFAULT_ENGINE,
   layoutEngines,
@@ -242,6 +252,27 @@ export default function App() {
 
 function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const bounds = useMemo<DateRange>(() => {
+    const events = concerts.timeline;
+    return events.length
+      ? [monthIndex(events[0].date), monthIndex(events[events.length - 1].date)]
+      : [monthIndex(concerts.meta.through), monthIndex(concerts.meta.through)];
+  }, [concerts]);
+  const [range, setRange] = useState<DateRange>(() =>
+    readRange(params.get("from"), params.get("to"), bounds),
+  );
+  const [cursor, setCursor] = useState(
+    () =>
+      readRange(
+        params.get("from"),
+        params.get("at") ?? params.get("to"),
+        range,
+      )[1],
+  );
+  function changeRange(next: DateRange) {
+    setRange(next);
+    setCursor(next[1]);
+  }
   const initialMin = Number(params.get("min") ?? 10);
   const [minConcerts, setMinConcerts] = useState<number | null>(
     params.get("min") === "all"
@@ -286,8 +317,43 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     () => concerts.venues.find((v) => v.id === venueId),
     [concerts, venueId],
   );
-  const counts = venue?.musicians ?? concerts.counts;
-  const ensembles = venue?.ensembles ?? concerts.ensembles ?? [];
+  const layoutCounts = venue?.musicians ?? concerts.counts;
+  const layoutGraph = useMemo(
+    () =>
+      filterGraph(
+        { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
+        layoutCounts,
+        minConcerts,
+        layoutCounts,
+      ),
+    [data, concerts, layoutCounts, minConcerts, venue],
+  );
+  const queryConcerts = useMemo(
+    () => createConcertWindow(concerts.timeline, venueId),
+    [concerts, venueId],
+  );
+  const windowed = useMemo(
+    () => queryConcerts(range[0], cursor),
+    [queryConcerts, range[0], cursor],
+  );
+  const histogram = useMemo(
+    () => concertHistogram(concerts.timeline, bounds, venueId),
+    [concerts, bounds, venueId],
+  );
+  const allDates = range[0] === bounds[0] && cursor === bounds[1];
+  const ensembles = useMemo(
+    () =>
+      allDates
+        ? (venue?.ensembles ?? concerts.ensembles)
+        : concertEnsembles(
+            concerts.timeline,
+            concerts.ensembles,
+            range[0],
+            cursor,
+            venueId,
+          ),
+    [allDates, venue, concerts, range[0], cursor, venueId],
+  );
   const musicianEnsembles = useMemo(
     () =>
       ensembles
@@ -295,15 +361,18 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         .sort((a, b) => b.musicians[selectedId!] - a.musicians[selectedId!]),
     [ensembles, selectedId],
   );
+  const counts = allDates ? layoutCounts : windowed.counts;
   const graph = useMemo(
     () =>
-      filterGraph(
-        { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
-        counts,
-        minConcerts,
-        venue?.musicians,
-      ),
-    [data, concerts.edges, counts, minConcerts, venue],
+      allDates
+        ? layoutGraph
+        : filterGraph(
+            { nodes: layoutGraph.nodes, edges: windowed.edges },
+            counts,
+            minConcerts,
+            counts,
+          ),
+    [allDates, layoutGraph, windowed, counts, minConcerts],
   );
   const visibleIds = useMemo(
     () => new Set(graph.nodes.map((n) => n.id)),
@@ -360,6 +429,9 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
 
   useEffect(() => {
     const query = new URLSearchParams();
+    if (range[0] !== bounds[0]) query.set("from", monthValue(range[0]));
+    if (range[1] !== bounds[1]) query.set("to", monthValue(range[1]));
+    if (cursor !== range[1]) query.set("at", monthValue(cursor));
     if (minConcerts !== 10)
       query.set("min", minConcerts === null ? "all" : String(minConcerts));
     if (venueId) query.set("venue", venueId);
@@ -384,6 +456,9 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     topCollaborators,
     selected,
     byId,
+    range,
+    bounds,
+    cursor,
     engine,
     spacing,
   ]);
@@ -408,6 +483,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     return () => window.removeEventListener("keydown", listener);
   }, []);
   function resetFilters() {
+    changeRange([...bounds]);
     setMinConcerts(null);
     setTopCollaborators(null);
     setVenueId("");
@@ -438,10 +514,14 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       <Network
         ref={network}
         data={graph}
+        layoutData={layoutGraph}
+        layoutCounts={layoutCounts}
         edges={edges}
         counts={counts}
         ensembles={ensembles}
-        ensembleEdges={venue?.edges ?? concerts.edges}
+        ensembleEdges={
+          allDates ? (venue?.edges ?? concerts.edges) : windowed.edges
+        }
         showEnsembles={showEnsembles}
         selected={selected}
         hovered={hovered}
@@ -621,8 +701,10 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               ))}
             </div>
             <p className="field-note">
-              {venue ? "Seçilen mekandaki" : "Arşivdeki"} geçmiş konserler
-              sayılır.
+              {venue
+                ? "Seçilen mekan ve tarih aralığındaki"
+                : "Seçilen tarih aralığındaki"}{" "}
+              geçmiş konserler sayılır.
             </p>
           </div>
           <div className="filter-section">
@@ -889,7 +971,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         <div className="empty-state surface" role="status">
           <NetworkIcon size={26} aria-hidden="true" />
           <strong>Bu filtrelerde müzisyen yok.</strong>
-          <p>Konser eşiğini düşür veya başka bir mekan seç.</p>
+          <p>Konser eşiğini düşür veya tarih aralığını genişlet.</p>
           <button className="text-button" onClick={resetFilters}>
             Filtreleri temizle
           </button>
@@ -935,6 +1017,17 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           </div>
         ) : null}
       </div>
+      <Timeline
+        bounds={bounds}
+        range={range}
+        cursor={cursor}
+        histogram={histogram}
+        musicians={graph.nodes.length}
+        edges={edges.length}
+        concerts={windowed.concerts}
+        onRange={changeRange}
+        onCursor={setCursor}
+      />
     </main>
   );
 }

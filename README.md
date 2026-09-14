@@ -14,13 +14,16 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 
 ## Kullanım
 
-- Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca arşivdeki tüm isimler görünür.
+- Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca seçilen tarihlerde konser kaydı bulunan tüm isimler görünür.
 - Genel görünümde her müzisyenin **en çok birlikte çaldığı ilk 5 kişiye** bağlantısı çizilir. Kişi sayısı 1, 3, 5 veya 10 seçilebilir; Tümü bağlantı sınırını kaldırır. Bir bağın iki kişiden birinin listesine girmesi yeterlidir, bu yüzden popüler müzisyenlerin görünür bağ sayısı X'i aşabilir. Sıralama mevcut filtrelerdeki kişiler arasında, mekan seçiliyse o mekandaki ortak konser sayısıyla hesaplanır. Eşitlikler müzisyen kimliğine göre çözülür. Seçim URL'de `top` parametresinde saklanır (`all` tüm bağlar); eski `shared` parametresi yerine varsayılan ilk 5 kullanılır.
 - Bir müzisyenin üzerine gelince filtrelenmiş graf içindeki tüm doğrudan bağları görünür. Tıklayınca seçim sabitlenir.
 - Biri seçiliyken başka bir müzisyenin üzerine gelmek aralarındaki **en az bağlantılı yolu** vurgular. Bu hesap, normalde gizlenen zayıf bağları da içerir. Yol mevcut filtrelere uyar.
 - Arama sonuçlarında ve seçili kişinin bağlantı listesinde hover veya klavye odağı da yol gösterir. Türkçe karakter kullanmadan arama yapılabilir.
 - Mekan seçimi, yalnızca o mekanda **aynı konserde** çalan kişilerin bağlarını gösterir. Konser eşiği de seçilen mekandaki konser sayısına uygulanır.
-- **Enstrüman vurgula**, mevcut ağdaki ilgili müzisyenleri halkalarla işaretler; kişileri, bağlantıları, yerleşimi veya yakınlaştırmayı değiştirmez. Listede konser sayısı en yüksek kişiler önce gelir; mekan seçiliyse o mekandaki sayılar kullanılır. Bir isme tıklayınca en çok birlikte çaldığı kişiler açılır. Arama tüm görünür müzisyenleri kapsar. Veride trompet ayrı tutulmadığı için **Bakır üflemeli** grubu kullanılır. Vurgulama, filtreler ve seçili kişi URL'de saklanır.
+- **Enstrüman vurgula**, mevcut ağdaki ilgili müzisyenleri halkalarla işaretler; kişileri, bağlantıları, yerleşimi veya yakınlaştırmayı değiştirmez. Listede konser sayısı en yüksek kişiler önce gelir; seçili tarih aralığı ve mekandaki sayılar kullanılır. Bir isme tıklayınca en çok birlikte çaldığı kişiler açılır. Arama tüm görünür müzisyenleri kapsar. Veride trompet ayrı tutulmadığı için **Bakır üflemeli** grubu kullanılır. Vurgulama, filtreler ve seçili kişi URL'de saklanır.
+- Alttaki zaman çizelgesi 1956'dan kesit tarihine kadar aylık konser yoğunluğunu gösterir. Uçları sürükleyerek veya ay alanlarını girerek aralık seçilir; alt kenarından tutarak aralık taşınır. Çizgiye tıklamak veya sürüklemek gösterilen tarihi değiştirir.
+- Oynat düğmesi seçilen aralığın başından itibaren ağı biriktirerek gösterir. Duraklatma, 0,5× / 1× / 2× / 4× hız ve son 1 / 5 / 10 / 20 yıl kısayolları vardır. Tarih değişirken yerleşim ve kamera sabit kalır; yeni müzisyen ve bağlar yumuşakça belirir. Hareket azaltma tercihinde geçişler kapatılır.
+- Aralık uçları klavyeyle birer ay, Shift ile birer yıl değişir; Home ve End sınıra götürür. Tarih aralığı ve oynatma konumu `from`, `to`, `at` parametreleriyle URL'de saklanır. Konser eşiği, mekan filtresi ve enstrüman vurgulaması aynı tarih görünümüne uygulanır.
 - **Yerleşim** menüsünden Topluluklar (varsayılan), ForceAtlas2, D3 veya ngraph seçilebilir. Topluluklar, sık birlikte çalan gruplara ayrı alan açar. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
 - Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Mobilde filtreler kaydırılabilir bir overlay'dir.
 
@@ -50,7 +53,7 @@ Bu sayılar kaynağın kayıt kapsamını gösterir. Sıfır kayıt, kişinin hi
 | Dosya                            | İçerik                                                                                         |
 | -------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `data/concerts.json.gz`          | Kaynaktan çıkarılan konser tarihi, mekan ve kadrolar; yeniden üretilebilir sıkıştırılmış kesit |
-| `public/data/concerts.json`      | Konser sayıları, ortak konser bağları ve mekanlara göre aynı bilgiler                          |
+| `public/data/concerts.json`      | Konser sayıları, ortak konser bağları, mekanlar ve tarihli sayısal kadrolar                    |
 | `public/data/atlas.json`         | 14.714 profil ve önceki kaynak graf arşivi                                                     |
 | `data/source-networks.ndjson.gz` | Önceki toplamada indirilen 14.714 ham ağ yanıtı                                                |
 | `data/manifest.json`             | Önceki ağ arşivinin kapsamı ve checksum'ı                                                      |
@@ -78,6 +81,7 @@ Her iki komut da gerekli bayrak olmadan kullanım bilgisini yazıp çıkar. Veri
 bun test
 bun run build
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
+ATLAS_TEST_URL=http://localhost:5173 bun run test:timeline
 ATLAS_TEST_URL=http://localhost:5173 bun run test:layouts
 bun run benchmark:layouts
 ```
@@ -86,6 +90,7 @@ Birim testleri; kişi başına en güçlü bağlantı seçimini, en kısa yolu, 
 
 UI testi yalnızca yerel sunucuda, kurulu Chrome ile çalışır. Canvas hover, seçiliyken hover yolu, filtreler, URL'den geri yükleme, mobil overlay'ler, klavye kullanımı ve veri yükleme hatasından dönüşü doğrular. Ekran görüntüleri `.cache/minimal-*.png` altında tutulur.
 
+Zaman çizelgesi testi, gerçek veriden beklenen tarih ve mekan sonuçlarını, sabit düğüm konumlarını, animasyon geçişini, oynat/duraklat davranışını, URL geri yüklemeyi, aralık sürüklemeyi ve mobil dokunmayı doğrular. Ekran görüntüleri `.cache/timeline-*.png` altında tutulur.
 
 Grup / proje adları grafın üzerinde etiketlenir. Bir müzisyen seçildiğinde veya üzerine gelindiğinde ilgili etiketler ve kadroya uzanan kesikli çizgiler belirginleşir. Seçim paneli ilgili tüm projeleri ve konser sayılarını listeler. Filtrelerde grup etiketleri kapatılabilir; mekan filtresi yalnızca o mekandaki kadroları kullanır.
 

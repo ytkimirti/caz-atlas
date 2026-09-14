@@ -77,7 +77,7 @@ try {
     x: 0,
     y: 0,
     width: 1512,
-    height: 982,
+    height: 854,
   });
   expect(
     await page.evaluate(
@@ -490,7 +490,7 @@ try {
   await ready();
   await expect(canvas).toHaveAttribute(
     "aria-label",
-    new RegExp(`^${data.nodes.length} müzisyenin`),
+    new RegExp(`^${Object.keys(concerts.counts).length} müzisyenin`),
   );
   // The full archive skips canvas animation to keep dense views responsive.
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -514,7 +514,7 @@ try {
   await recovery.close();
   expect(errors).toEqual([]);
   console.log(
-    "UI verified: full-screen light canvas, top collaborators and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument highlighting, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
+    "UI verified: light graph above timeline, top collaborators and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument highlighting, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
   );
 } finally {
   await browser.close();
