@@ -1,7 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import type { Atlas, ConcertIndex } from "../src/types";
-import { adjacency, shortestPath, filterGraph } from "../src/graph";
+import {
+  adjacency,
+  shortestPath,
+  filterGraph,
+  topCollaboratorEdges,
+} from "../src/graph";
 const base = process.env.ATLAS_TEST_URL || "http://localhost:18837";
 if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw new Error("UI checks must target a local development server.");
@@ -28,6 +33,10 @@ const search = page.getByRole("combobox", {
 });
 const ready = () =>
   expect(canvas).toHaveAttribute("data-layout", "ready", { timeout: 45000 });
+async function pressGraphKey(key: string) {
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.keyboard.press(key);
+}
 async function choose(name: string) {
   await search.fill(name);
   await page.locator(".search-results").getByRole("option").first().click();
@@ -76,53 +85,69 @@ try {
   );
   const visibleEdges = Number(await canvas.getAttribute("data-visible-edges"));
   expect(visibleEdges).toBeGreaterThan(0);
-  expect(visibleEdges).toBe(
-    defaultGraph.edges.filter((e) => e.weight >= 5).length,
-  );
+  expect(visibleEdges).toBe(topCollaboratorEdges(defaultGraph.edges, 5).length);
   await expect(page.locator(".active-filters")).toContainText(
-    "En az 5 ortak konser",
+    "Kişi başına ilk 5 bağlantı",
   );
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
   await page
-    .getByRole("button", { name: "En az 10 ortak konser", exact: true })
+    .getByRole("button", { name: "Kişi başına ilk 10 bağlantı", exact: true })
     .click();
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
-    String(defaultGraph.edges.filter((e) => e.weight >= 10).length),
+    String(topCollaboratorEdges(defaultGraph.edges, 10).length),
   );
-  await expect(page).toHaveURL(/shared=10/);
+  await expect(page).toHaveURL(/top=10/);
   await page.reload();
   await ready();
   await expect(page.locator(".active-filters")).toContainText(
-    "En az 10 ortak konser",
+    "Kişi başına ilk 10 bağlantı",
   );
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
-    String(defaultGraph.edges.filter((e) => e.weight >= 10).length),
+    String(topCollaboratorEdges(defaultGraph.edges, 10).length),
   );
-  await page
-    .getByRole("button", { name: "Ortak konser filtresini kaldır" })
-    .click();
+  await page.getByRole("button", { name: "Bağlantı sınırını kaldır" }).click();
+  await expect(canvas).toHaveAttribute(
+    "data-visible-edges",
+    String(defaultGraph.edges.length),
+  );
+  await expect(page).toHaveURL(/top=all/);
+  await page.reload();
+  await ready();
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
     String(defaultGraph.edges.length),
   );
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
+  for (const limit of [1, 3]) {
+    await page
+      .getByRole("button", {
+        name: `Kişi başına ilk ${limit} bağlantı`,
+        exact: true,
+      })
+      .click();
+    await expect(canvas).toHaveAttribute(
+      "data-visible-edges",
+      String(topCollaboratorEdges(defaultGraph.edges, limit).length),
+    );
+  }
   await page
-    .getByRole("button", { name: "En az 5 ortak konser", exact: true })
+    .getByRole("button", { name: "Kişi başına ilk 5 bağlantı", exact: true })
     .click();
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
 
-  // Zoom buttons accumulate rapid clicks, ease briefly, then stop rendering.
+  // Keyboard zoom accumulates rapid presses, eases briefly, then stops rendering.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const motion = await page.evaluate(async () => {
     const graph = document.querySelector<HTMLCanvasElement>("canvas")!;
-    const button = document.querySelector<HTMLButtonElement>(
-      '[aria-label="Yakınlaştır"]',
-    )!;
     const before = Number(graph.dataset.zoom);
-    button.click();
-    button.click();
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+    );
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+    );
     const samples: number[] = [];
     const start = performance.now();
     await new Promise<void>((resolve) => {
@@ -139,7 +164,7 @@ try {
   expect(motion.samples.at(-1)!).toBeCloseTo(motion.before * 1.3 ** 2, 5);
   expect(motion.animating).toBe("false");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("0");
   await expect(canvas).toHaveAttribute("data-animating", "false");
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-zoom")))
@@ -263,7 +288,7 @@ try {
   );
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
-    String(venueGraph.edges.filter((e) => e.weight >= 5).length),
+    String(topCollaboratorEdges(venueGraph.edges, 5).length),
   );
   await expect(page).toHaveURL(/venue=NardisJazzClub/);
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
@@ -287,8 +312,8 @@ try {
   await page.getByLabel("Konser sayısı", { exact: true }).fill("10");
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
   await ready();
-  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("+");
+  await pressGraphKey("0");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(async () => (await canvas.boundingBox())?.width).toBe(390);
@@ -307,8 +332,7 @@ try {
   await expect(page.locator(".selection-panel")).not.toBeVisible();
   await expect(page.locator(".filter-panel")).toBeVisible();
   const bounds = await page.locator(".filter-panel").boundingBox();
-  const zoomBounds = await page.locator(".zoom-controls").boundingBox();
-  expect(bounds!.y + bounds!.height).toBeLessThan(zoomBounds!.y);
+  expect(bounds!.y + bounds!.height).toBeLessThan(844);
   expect(
     await page
       .locator(".filter-panel")
@@ -352,12 +376,9 @@ try {
     touchPoints: [],
   });
   await expect(page.locator(".selection-panel")).toHaveCount(0);
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("0");
 
   await page.setViewportSize({ width: 320, height: 568 });
-  const footer = await page.locator(".timeline").boundingBox();
-  const narrowZoom = await page.locator(".zoom-controls").boundingBox();
-  expect(narrowZoom!.y + narrowZoom!.height).toBeLessThan(footer!.y);
   await page.screenshot({ path: ".cache/polish-narrow.png" });
 
   await page.setViewportSize({ width: 1512, height: 982 });
@@ -371,9 +392,9 @@ try {
   );
   // The full archive skips canvas animation to keep dense views responsive.
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
+  await pressGraphKey("+");
   await expect(canvas).toHaveAttribute("data-animating", "false");
-  await page.getByRole("button", { name: "Grafı ekrana sığdır" }).click();
+  await pressGraphKey("0");
   await page.screenshot({ path: ".cache/minimal-all.png" });
 
   // Recover from a failed dataset request without a page reload.
@@ -391,7 +412,7 @@ try {
   await recovery.close();
   expect(errors).toEqual([]);
   console.log(
-    "UI verified: light graph above timeline, shared-concert thresholds and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
+    "UI verified: light graph above timeline, top collaborators and URL restore, canvas hover, selected-to-hover shortest path, strict concert filter, empty results, venue-only collaborations, instrument intersection, URL reload, keyboard controls, mobile overlays, failed-load recovery, zero runtime errors.",
   );
 } finally {
   await browser.close();

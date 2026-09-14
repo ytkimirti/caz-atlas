@@ -2,9 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Network as NetworkIcon,
   ChevronDown,
-  LocateFixed,
-  Minus,
-  Plus,
   Search,
   SlidersHorizontal,
   X,
@@ -35,7 +32,7 @@ import {
   adjacency,
   filterGraph,
   shortestPath,
-  edgesBySharedConcerts,
+  topCollaboratorEdges,
 } from "./graph";
 
 function MusicianSearch({
@@ -294,10 +291,12 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       ? params.get("instrument")!
       : "",
   );
-  const [minSharedConcerts, setMinSharedConcerts] = useState(
-    [1, 2, 5, 10].includes(Number(params.get("shared")))
-      ? Number(params.get("shared"))
-      : 5,
+  const [topCollaborators, setTopCollaborators] = useState<number | null>(
+    params.get("top") === "all"
+      ? null
+      : [1, 3, 5, 10].includes(Number(params.get("top")))
+        ? Number(params.get("top"))
+        : 5,
   );
   const [engine, setEngine] = useState(() => parseEngine(params.get("engine")));
   const [spacing, setSpacing] = useState(() =>
@@ -393,8 +392,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   }, [graph]);
   const neighbors = useMemo(() => adjacency(graph), [graph]);
   const edges = useMemo(
-    () => edgesBySharedConcerts(graph.edges, minSharedConcerts),
-    [graph, minSharedConcerts],
+    () => topCollaboratorEdges(graph.edges, topCollaborators),
+    [graph, topCollaborators],
   );
   const path = useMemo(
     () =>
@@ -435,7 +434,11 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       query.set("min", minConcerts === null ? "all" : String(minConcerts));
     if (venueId) query.set("venue", venueId);
     if (instrument) query.set("instrument", instrument);
-    if (minSharedConcerts !== 5) query.set("shared", String(minSharedConcerts));
+    if (topCollaborators !== 5)
+      query.set(
+        "top",
+        topCollaborators === null ? "all" : String(topCollaborators),
+      );
     if (engine !== DEFAULT_ENGINE) query.set("engine", engine);
     if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
@@ -448,7 +451,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     minConcerts,
     venueId,
     instrument,
-    minSharedConcerts,
+    topCollaborators,
     selected,
     byId,
     range,
@@ -480,7 +483,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   function resetFilters() {
     changeRange([...bounds]);
     setMinConcerts(null);
-    setMinSharedConcerts(1);
+    setTopCollaborators(null);
     setInstrument("");
     setVenueId("");
     setVenueQuery("");
@@ -582,33 +585,34 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           onSelect={pick}
           onHover={setHoveredId}
         />
-        <button
-          className={`filter-toggle surface ${filtersOpen ? "active" : ""}`}
-          aria-label="Filtreler"
-          aria-expanded={filtersOpen}
-          aria-controls="filters"
-          onClick={() => setFiltersOpen((v) => !v)}
-        >
-          <SlidersHorizontal size={17} />
-          <span>Filtreler</span>
-          {(minConcerts !== null ||
-            venueId ||
-            instrument ||
-            minSharedConcerts > 1) && <i className="filter-dot" />}
-        </button>
       </div>
+
+      <button
+        className={`filter-toggle surface ${filtersOpen ? "active" : ""}`}
+        aria-label="Filtreler"
+        aria-expanded={filtersOpen}
+        aria-controls="filters"
+        onClick={() => setFiltersOpen((v) => !v)}
+      >
+        <SlidersHorizontal size={17} />
+        <span>Filtreler</span>
+        {(minConcerts !== null ||
+          venueId ||
+          instrument ||
+          topCollaborators !== null) && <i className="filter-dot" />}
+      </button>
 
       {(minConcerts !== null ||
         venue ||
         instrument ||
-        minSharedConcerts > 1) && (
+        topCollaborators !== null) && (
         <div className="active-filters">
-          {minSharedConcerts > 1 && (
+          {topCollaborators !== null && (
             <button
-              onClick={() => setMinSharedConcerts(1)}
-              aria-label="Ortak konser filtresini kaldır"
+              onClick={() => setTopCollaborators(null)}
+              aria-label="Bağlantı sınırını kaldır"
             >
-              En az {minSharedConcerts} ortak konser
+              Kişi başına ilk {topCollaborators} bağlantı
               <X size={12} />
             </button>
           )}
@@ -790,22 +794,28 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           </div>
           <div className="filter-section">
             <div className="field-heading">
-              <span>En az ortak konser</span>
+              <span>En çok birlikte çaldığı kişiler</span>
             </div>
             <div className="presets">
-              {[1, 2, 5, 10].map((n) => (
+              {[1, 3, 5, 10, null].map((n) => (
                 <button
-                  key={n}
-                  aria-label={`En az ${n} ortak konser`}
-                  aria-pressed={minSharedConcerts === n}
-                  onClick={() => setMinSharedConcerts(n)}
+                  key={n ?? "all"}
+                  aria-label={
+                    n === null
+                      ? "Tüm bağlantılar"
+                      : `Kişi başına ilk ${n} bağlantı`
+                  }
+                  aria-pressed={topCollaborators === n}
+                  onClick={() => setTopCollaborators(n)}
                 >
-                  {n}
+                  {n ?? "Tümü"}
                 </button>
               ))}
             </div>
             <p className="field-note">
-              Aynı konserde birlikte çaldıkları kayıt sayısı. Üzerine gelince
+              Ortak konser sayısına göre, mevcut filtrelerde kişi başına en
+              güçlü bağlantılar. Bir kişinin listesinde olması yeterli; bu
+              yüzden bazı kişilerde daha fazla bağ görünebilir. Üzerine gelince
               veya seçince kişinin tüm bağları görünür.
             </p>
             <label className="check-label">
@@ -963,13 +973,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               {number(neighbors.get(hovered!)?.length ?? 0)} bağ
             </span>
           </div>
-        ) : (
-          <p className="interaction-hint">
-            {selected !== null
-              ? "En kısa yol için başka bir müzisyenin üzerine gel."
-              : "Üzerine gel: bağlantılar · Tıkla: seç · Kaydır: yakınlaş"}
-          </p>
-        )}
+        ) : null}
       </div>
       <Timeline
         bounds={bounds}
@@ -982,33 +986,6 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         onRange={changeRange}
         onCursor={setCursor}
       />
-      <div className="zoom-controls surface" aria-label="Graf görünümü">
-        <button
-          className="icon-button"
-          aria-label="Uzaklaştır"
-          title="Uzaklaştır (-)"
-          onClick={() => network.current?.zoom(1 / 1.3)}
-        >
-          <Minus size={17} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label="Yakınlaştır"
-          title="Yakınlaştır (+)"
-          onClick={() => network.current?.zoom(1.3)}
-        >
-          <Plus size={17} />
-        </button>
-        <span />
-        <button
-          className="icon-button"
-          aria-label="Grafı ekrana sığdır"
-          title="Ekrana sığdır (0)"
-          onClick={() => network.current?.fit()}
-        >
-          <LocateFixed size={17} />
-        </button>
-      </div>
     </main>
   );
 }
