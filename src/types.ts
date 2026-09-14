@@ -19,6 +19,14 @@ export interface Edge {
   target: number;
   weight: number;
 }
+export type GraphMusician = Pick<
+  Musician,
+  "id" | "key" | "name" | "group" | "degree" | "x" | "y"
+>;
+export interface GraphData {
+  nodes: GraphMusician[];
+  edges: Edge[];
+}
 export interface Atlas {
   nodes: Musician[];
   edges: Edge[];

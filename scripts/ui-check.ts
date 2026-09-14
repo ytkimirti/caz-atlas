@@ -537,6 +537,8 @@ try {
   await page.screenshot({ path: ".cache/minimal-mobile-filters.png" });
   await page.keyboard.press("Escape");
   await expect(page.locator(".filter-panel")).toHaveCount(0);
+  await expect(page.locator(".selection-panel h2")).toHaveText("Asude Şaşmaz");
+  await page.keyboard.press("Escape");
   await expect(page.locator(".selection-panel")).toHaveCount(0);
   await page.keyboard.press("Control+k");
   await expect(search).toBeFocused();
@@ -590,14 +592,14 @@ try {
 
   // Recover from a failed dataset request without a page reload.
   const recovery = await browser.newPage();
-  await recovery.route("**/data/concerts.json", (route) =>
+  await recovery.route("**/data/runtime.json", (route) =>
     route.fulfill({ status: 503, body: "Unavailable" }),
   );
   await recovery.goto(base);
   await expect(
     recovery.getByRole("button", { name: "Tekrar dene" }),
   ).toBeVisible();
-  await recovery.unroute("**/data/concerts.json");
+  await recovery.unroute("**/data/runtime.json");
   await recovery.getByRole("button", { name: "Tekrar dene" }).click();
   await expect(recovery.locator("canvas")).toBeVisible();
   await recovery.close();

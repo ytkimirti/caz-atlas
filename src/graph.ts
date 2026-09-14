@@ -1,4 +1,4 @@
-import type { Atlas, Edge, Musician } from "./types";
+import type { Edge, GraphData, GraphMusician } from "./types";
 
 // Weight is the number of distinct concerts shared by the two musicians.
 // Keep the full graph separately for selection and shortest paths.
@@ -32,13 +32,13 @@ export function topCollaboratorEdges(
   );
 }
 
-export function filterGraph(
-  data: Pick<Atlas, "nodes" | "edges">,
+export function filterGraph<T extends GraphMusician>(
+  data: { nodes: T[]; edges: Edge[] },
   counts: Record<string, number>,
   minConcerts: number | null,
   venueMembers?: Record<string, number>,
 ) {
-  const nodes: Musician[] = data.nodes.filter(
+  const nodes = data.nodes.filter(
     (node) =>
       (minConcerts === null || (counts[node.id] ?? 0) > minConcerts) &&
       (!venueMembers || (venueMembers[node.id] ?? 0) > 0),
@@ -51,7 +51,7 @@ export function filterGraph(
     ),
   };
 }
-export function adjacency(data: Pick<Atlas, "nodes" | "edges">) {
+export function adjacency(data: GraphData) {
   const map = new Map<number, { id: number; weight: number }[]>(
     data.nodes.map((n) => [n.id, []]),
   );

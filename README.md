@@ -12,6 +12,8 @@ bun run build
 
 Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizlemesi için `pw wait` kullanılır. Hesap, uygulama sunucusu veya veritabanı gerekmez.
 
+`dev` ve `build`, yerel arşivlerden `public/data/runtime.json` ve `public/data/projects.json` dosyalarını otomatik üretir. Tarayıcı önce yalnızca küçük çalışma verisini yükler; grup / proje detayları yerleşim hazır olunca veya bir müzisyen seçilince ayrıca yüklenir. Proje verisi yüklenemese de graf çalışır; seçim ve görünüm panellerinden tekrar denenebilir. Kaynak arşivler değiştirilmez. Veriyi güncelledikten sonra sunucuyu yeniden başlat veya `bun run data:runtime --build` çalıştır.
+
 ## Kullanım
 
 - Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca seçilen tarihlerde konser kaydı bulunan tüm isimler görünür.
@@ -31,6 +33,8 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 
 
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
+
+`Esc` önce açık ayar panelini veya rehberi kapatır; müzisyen seçimi korunur. Mobil ayar panelleri açıkken klavye odağı panelde kalır ve kapanınca açan düğmeye döner. 2D seçimler detay panelinin dışında görünür tutulur.
 
 Yerleşim Web Worker'da hesaplanır; motor veya filtre değişince önceki hesap iptal edilir. Topluluklar görünümü tam filtrelenmiş konser grafından bağlı gruplar bulur. Müzisyenler kendi topluluklarında yerleşir; ardından topluluklar aralarındaki ortak konserlere göre konumlanır. Her topluluğun boyutuna göre boşluk ayrılır, bağlantısız ağlar iç düzenleri korunarak dairesel biçimde yerleştirilir. Diğer motorlar güçlü ilişkilerle birlikte toplulukları birleştiren zayıf köprüleri korur. Bağlantısız kişiler ayrı alanlara yerleştirilir. Gruplar resmi müzik grupları değildir; gruplar arası uzaklık ilişki gücünü ölçmez. Çizgileri sadeleştirmek bağlantı verisini silmez. Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Mesafeler coğrafya veya zaman ifade etmez.
 
@@ -85,6 +89,7 @@ Her iki komut da gerekli bayrak olmadan kullanım bilgisini yazıp çıkar. Veri
 ```sh
 bun test
 bun run build
+ATLAS_TEST_URL=http://localhost:5173 bun run test:app
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
 ATLAS_TEST_URL=http://localhost:5173 bun run test:3d
 ATLAS_TEST_URL=http://localhost:5173 bun run test:focus

@@ -5,7 +5,7 @@ import {
   useMemo,
   useRef,
 } from "react";
-import type { Atlas, Edge, Ensemble } from "./types";
+import type { GraphData, Edge, Ensemble } from "./types";
 import type { LayoutEngine, LayoutStatus, ViewMode } from "./layout-options";
 import type { LayoutResponse } from "./layout";
 import { frameNeighborhood, orbitRadius } from "./camera";
@@ -22,8 +22,8 @@ export interface NetworkHandle {
   focus: (id: number) => void;
 }
 interface Props {
-  data: Pick<Atlas, "nodes" | "edges">;
-  layoutData: Pick<Atlas, "nodes" | "edges">;
+  data: GraphData;
+  layoutData: GraphData;
   layoutCounts: Record<string, number>;
   edges: Edge[];
   counts: Record<string, number>;
@@ -362,6 +362,26 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         animate,
       );
     }
+    function revealMusician(id: number, animate = true) {
+      if (!positions.has(id) || !width || !height) return;
+      const viewport = focusViewport();
+      const screen = point(id);
+      if (
+        screen.x >= viewport.left + 16 &&
+        screen.x <= viewport.right - 16 &&
+        screen.y >= viewport.top + 16 &&
+        screen.y <= viewport.bottom - 16
+      )
+        return;
+      moveView(
+        {
+          zoom,
+          x: panX + (viewport.left + viewport.right) / 2 - screen.x,
+          y: panY + (viewport.top + viewport.bottom) / 2 - screen.y,
+        },
+        animate,
+      );
+    }
     function stopMovement() {
       // Finish moving the orbit center without moving the selected point on screen
       // when a new gesture interrupts a focus transition.
@@ -430,17 +450,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           clearHover();
           return;
         }
-        const p = positions.get(id);
-        if (!p) return;
-        const screen = point(id);
-        // Keep the surrounding graph in view so a hovered route stays readable.
-        if (
-          screen.x < 30 ||
-          screen.x > width - 30 ||
-          screen.y < 140 ||
-          screen.y > height - 100
-        )
-          fit();
+        revealMusician(id);
         clearHover();
       },
     };
@@ -454,9 +464,25 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.height = Math.round(height * ratio);
       if (spatial && state.current.selected !== null)
         focusNeighborhood(state.current.selected, false);
-      else fit();
+      else {
+        fit();
+        if (state.current.selected !== null)
+          revealMusician(state.current.selected, false);
+      }
     });
     observer.observe(canvas);
+    const panels = new ResizeObserver(invalidateFrame);
+    function observePanels() {
+      panels.disconnect();
+      for (const panel of canvas.parentElement!.querySelectorAll(
+        ".selection-panel, .instrument-explorer, .timeline, .filter-panel, .layout-controls",
+      ))
+        panels.observe(panel);
+      invalidateFrame();
+    }
+    const panelChanges = new MutationObserver(observePanels);
+    panelChanges.observe(canvas.parentElement!, { childList: true });
+    observePanels();
     let worker: Worker | null = null;
     let generation = 0;
     function startLayout() {
@@ -734,12 +760,21 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     canvas.addEventListener("wheel", wheel, { passive: false });
 
     let selection = props.selected;
+    let viewportKey = "";
     function draw(now: number) {
       frame = 0;
-      if (spatial && selection !== state.current.selected) {
+      const nextViewportKey = JSON.stringify(focusViewport());
+      if (
+        selection !== state.current.selected ||
+        viewportKey !== nextViewportKey
+      ) {
+        const selectionChanged = selection !== state.current.selected;
+        viewportKey = nextViewportKey;
         selection = state.current.selected;
-        if (selection !== null) focusNeighborhood(selection);
-        else {
+        if (selection !== null) {
+          if (spatial) focusNeighborhood(selection);
+          else revealMusician(selection);
+        } else if (spatial && selectionChanged) {
           stopMovement();
           fit(true, scene.center);
         }
@@ -1194,6 +1229,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
+      panels.disconnect();
+      panelChanges.disconnect();
       worker?.terminate();
       canvas.removeEventListener("keydown", keydown);
       canvas.removeEventListener("pointerdown", down);
