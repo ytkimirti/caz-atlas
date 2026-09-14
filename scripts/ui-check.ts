@@ -338,7 +338,7 @@ try {
   const expectedPath = shortestPath(graph, from.id, target.id);
   await search.fill(target.name);
   await page.locator(".search-results").getByRole("option").first().hover();
-  await expect(page.locator(".path-caption")).toHaveText("En kısa yol · 2 bağ");
+  await expect(page.locator(".graph-status")).toBeEmpty();
   await expect(canvas).toHaveAttribute("data-path", expectedPath.join(","));
   await expect(canvas).toHaveAttribute("data-focus", String(from.id));
   await checkNames(12);
@@ -350,10 +350,10 @@ try {
   expect(disconnected).toBeTruthy();
   await search.fill(disconnected.name);
   await page.locator(".search-results").getByRole("option").first().hover();
-  await expect(page.locator(".path-readout")).toContainText("yol bulunamadı");
+  await expect(page.locator(".graph-status")).toBeEmpty();
   await expect(canvas).toHaveAttribute("data-path", "");
   await search.press("Escape");
-  await expect(page.locator(".path-readout")).toHaveCount(0);
+  await expect(page.locator(".graph-status")).toBeEmpty();
   await expect(canvas).toHaveAttribute("data-path", "");
   await page.getByRole("button", { name: "Seçimi kaldır" }).click();
 

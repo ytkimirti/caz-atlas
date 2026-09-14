@@ -1058,32 +1058,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         </div>
       )}
       <div className="graph-status" aria-live="polite">
-        {hoveredMusician && selected !== null && hovered !== selected ? (
-          <div className="path-readout surface">
-            {path.length ? (
-              <>
-                <span className="path-caption">
-                  En kısa yol · {path.length - 1} bağ
-                </span>
-                <div className="path-names">
-                  {path.map((id, i) => (
-                    <span key={id}>
-                      {i > 0 && <span className="path-separator">→</span>}
-                      {byId.get(id)!.name}
-                    </span>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <strong>
-                  {musician?.name} → {hoveredMusician.name}
-                </strong>
-                <span>Bu filtrelerde aralarında yol bulunamadı.</span>
-              </>
-            )}
-          </div>
-        ) : hoveredMusician ? (
+        {hoveredMusician && (selected === null || hovered === selected) ? (
           <div className="hover-readout surface">
             <i
               className="color-dot"

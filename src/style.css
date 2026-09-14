@@ -537,31 +537,6 @@ input[type="checkbox"] {
   z-index: 2;
   text-align: center;
 }
-.path-readout {
-  padding: 12px 18px;
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-.path-readout > span:last-child {
-  color: var(--muted);
-}
-.path-caption {
-  font-size: 12px;
-  color: #a75a43;
-}
-.path-names {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 7px;
-  color: #343f2c;
-}
-.path-separator {
-  margin-right: 7px;
-  color: #ae705a;
-}
 .hover-readout {
   display: flex;
   align-items: center;
@@ -744,10 +719,6 @@ input[type="checkbox"] {
   }
   .hover-readout > span {
     font-size: 10px;
-  }
-  .path-readout {
-    padding: 10px 12px;
-    font-size: 12px;
   }
   .empty-state {
     top: 46%;
@@ -975,8 +946,7 @@ select {
     animation: detail-in 200ms var(--ease-out);
   }
   .active-filters button,
-  .hover-readout,
-  .path-readout {
+  .hover-readout {
     animation: rise-in 160ms var(--ease-out);
   }
   .identity,
