@@ -15,12 +15,12 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 ## Kullanım
 
 - Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca arşivdeki tüm isimler görünür.
-- Genel görünümde **en az 5 farklı konserde birlikte çalan** müzisyenlerin bağları çizilir. Ortak konser eşiği 1, 2, 5 veya 10 seçilebilir; 1 tüm bağları gösterir. Kişi başına bağ sınırı yoktur. Mekan seçiliyken yalnızca o mekandaki ortak konserler sayılır. Eşik URL’de `shared` parametresinde saklanır.
+- Genel görünümde her müzisyenin **en çok birlikte çaldığı ilk 5 kişiye** bağlantısı çizilir. Kişi sayısı 1, 3, 5 veya 10 seçilebilir; Tümü bağlantı sınırını kaldırır. Bir bağın iki kişiden birinin listesine girmesi yeterlidir, bu yüzden popüler müzisyenlerin görünür bağ sayısı X'i aşabilir. Sıralama mevcut filtrelerdeki kişiler arasında, mekan seçiliyse o mekandaki ortak konser sayısıyla hesaplanır. Eşitlikler müzisyen kimliğine göre çözülür. Seçim URL'de `top` parametresinde saklanır (`all` tüm bağlar); eski `shared` parametresi yerine varsayılan ilk 5 kullanılır.
 - Bir müzisyenin üzerine gelince filtrelenmiş graf içindeki tüm doğrudan bağları görünür. Tıklayınca seçim sabitlenir.
 - Biri seçiliyken başka bir müzisyenin üzerine gelmek aralarındaki **en az bağlantılı yolu** vurgular. Bu hesap, normalde gizlenen zayıf bağları da içerir. Yol mevcut filtrelere uyar.
 - Arama sonuçlarında ve seçili kişinin bağlantı listesinde hover veya klavye odağı da yol gösterir. Türkçe karakter kullanmadan arama yapılabilir.
 - Mekan seçimi, yalnızca o mekanda **aynı konserde** çalan kişilerin bağlarını gösterir. Konser eşiği de seçilen mekandaki konser sayısına uygulanır.
-- Enstrüman filtresi diğer filtrelerle birlikte çalışır. Filtreler ve seçili kişi URL'de saklanır.
+- **Enstrüman vurgula**, mevcut ağdaki ilgili müzisyenleri halkalarla işaretler; kişileri, bağlantıları, yerleşimi veya yakınlaştırmayı değiştirmez. Listede konser sayısı en yüksek kişiler önce gelir; mekan seçiliyse o mekandaki sayılar kullanılır. Bir isme tıklayınca en çok birlikte çaldığı kişiler açılır. Arama tüm görünür müzisyenleri kapsar. Veride trompet ayrı tutulmadığı için **Bakır üflemeli** grubu kullanılır. Vurgulama, filtreler ve seçili kişi URL'de saklanır.
 - **Yerleşim** menüsünden Topluluklar (varsayılan), ForceAtlas2, D3 veya ngraph seçilebilir. Topluluklar, sık birlikte çalan gruplara ayrı alan açar. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
 - Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Mobilde filtreler kaydırılabilir bir overlay'dir.
 
@@ -82,7 +82,7 @@ ATLAS_TEST_URL=http://localhost:5173 bun run test:layouts
 bun run benchmark:layouts
 ```
 
-Birim testleri; ortak konser eşiğini, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
+Birim testleri; kişi başına en güçlü bağlantı seçimini, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
 
 UI testi yalnızca yerel sunucuda, kurulu Chrome ile çalışır. Canvas hover, seçiliyken hover yolu, filtreler, URL'den geri yükleme, mobil overlay'ler, klavye kullanımı ve veri yükleme hatasından dönüşü doğrular. Ekran görüntüleri `.cache/minimal-*.png` altında tutulur.
 

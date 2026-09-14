@@ -185,6 +185,10 @@ input[type="checkbox"] {
   color: var(--muted);
 }
 .filter-toggle {
+  position: absolute;
+  top: 90px;
+  left: 28px;
+  z-index: 5;
   height: 44px;
   display: flex;
   align-items: center;
@@ -249,12 +253,12 @@ input[type="checkbox"] {
 }
 .active-filters {
   position: absolute;
-  top: 90px;
-  left: 28px;
+  top: 97px;
+  left: 150px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-width: calc(100% - 400px);
+  max-width: calc(100% - 480px);
 }
 .active-filters button {
   font-size: 12px;
@@ -270,9 +274,9 @@ input[type="checkbox"] {
 .filter-panel {
   position: absolute;
   left: 28px;
-  top: 132px;
+  top: 144px;
   width: 300px;
-  max-height: calc(100dvh - 195px);
+  max-height: calc(100dvh - 207px);
   overflow-y: auto;
   z-index: 4;
   padding: 18px;
@@ -539,14 +543,6 @@ input[type="checkbox"] {
   z-index: 2;
   text-align: center;
 }
-.interaction-hint {
-  font-size: 12px;
-  color: var(--muted);
-  background: #fafaf6;
-  border: 1px solid #e7eadf;
-  border-radius: 20px;
-  padding: 8px 14px;
-}
 .path-readout {
   padding: 12px 18px;
   font-size: 12px;
@@ -585,45 +581,6 @@ input[type="checkbox"] {
 .hover-readout > span {
   color: var(--muted);
   font-size: 12px;
-}
-.graph-footer {
-  position: absolute;
-  left: 28px;
-  bottom: 27px;
-  display: flex;
-  gap: 18px;
-  font-size: 12px;
-  color: var(--muted);
-  pointer-events: none;
-  padding: 7px 0;
-  background: #fafaf6;
-  font-variant-numeric: tabular-nums;
-}
-.graph-footer b {
-  font-weight: 400;
-  margin: 0 6px;
-}
-.graph-footer a {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  pointer-events: auto;
-  color: var(--muted);
-}
-.zoom-controls {
-  position: absolute;
-  right: 24px;
-  bottom: 20px;
-  display: flex;
-  align-items: center;
-  padding: 4px;
-  gap: 2px;
-}
-.zoom-controls > span {
-  height: 15px;
-  width: 1px;
-  background: #e3e7db;
-  margin: 0 3px;
 }
 .empty-state {
   position: absolute;
@@ -667,15 +624,19 @@ input[type="checkbox"] {
 @media (min-width: 1500px) {
   .filter-panel {
     left: 36px;
-    top: 140px;
+    top: 151px;
   }
   .identity {
     top: 30px;
     left: 36px;
   }
-  .active-filters {
+  .filter-toggle {
     left: 36px;
     top: 97px;
+  }
+  .active-filters {
+    left: 158px;
+    top: 104px;
   }
   .top-controls {
     right: 32px;
@@ -683,12 +644,6 @@ input[type="checkbox"] {
   }
   .selection-panel {
     top: 86px;
-    right: 32px;
-  }
-  .graph-footer {
-    left: 36px;
-  }
-  .zoom-controls {
     right: 32px;
   }
 }
@@ -705,7 +660,7 @@ input[type="checkbox"] {
   }
   .top-controls {
     top: 62px;
-    left: 16px;
+    left: 68px;
     right: 16px;
     gap: 7px;
   }
@@ -720,6 +675,9 @@ input[type="checkbox"] {
     display: none;
   }
   .filter-toggle {
+    top: 62px;
+    left: 16px;
+    width: 44px;
     height: 44px;
     padding: 0 12px;
   }
@@ -727,7 +685,7 @@ input[type="checkbox"] {
     display: none;
   }
   .search-results {
-    left: 0;
+    left: -52px;
     right: auto;
     width: calc(100vw - 32px);
     max-height: 310px;
@@ -782,24 +740,9 @@ input[type="checkbox"] {
   .selection-panel .panel-heading {
     margin-bottom: 6px;
   }
-  .graph-footer {
-    left: 18px;
-    bottom: 22px;
-    flex-direction: column;
-    gap: 5px;
-    font-size: 10px;
-  }
   .graph-status {
     bottom: 69px;
     max-width: calc(100% - 32px);
-  }
-  .interaction-hint {
-    font-size: 10px;
-    padding: 7px 10px;
-  }
-  .zoom-controls {
-    right: 16px;
-    bottom: 17px;
   }
   .hover-readout {
     font-size: 12px;
@@ -818,7 +761,7 @@ input[type="checkbox"] {
   .empty-state {
     top: 46%;
   }
-  .top-controls .filter-dot {
+  .filter-toggle .filter-dot {
     position: absolute;
     right: 8px;
     top: 8px;
@@ -948,11 +891,6 @@ select {
   background: #f1f4ed;
   color: var(--accent);
 }
-.graph-footer a:hover {
-  color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 .loading-mark {
   display: flex;
   gap: 5px;
@@ -1013,9 +951,7 @@ select {
     animation: rise-in 160ms var(--ease-out);
   }
   .identity,
-  .top-controls,
-  .graph-footer,
-  .zoom-controls {
+  .top-controls {
     animation: rise-in 240ms var(--ease-out);
   }
   .empty-state,
@@ -1104,25 +1040,11 @@ select {
     width: 5px;
     height: 5px;
   }
-  .graph-footer {
-    font-size: 10px;
-    gap: 4px;
-    max-width: calc(100% - 184px);
-  }
-  .graph-footer b {
-    margin-inline: 3px;
-  }
   .selection-panel {
     bottom: calc(114px + env(safe-area-inset-bottom));
   }
   .graph-status {
     bottom: calc(76px + env(safe-area-inset-bottom));
-  }
-  .graph-footer {
-    bottom: calc(20px + env(safe-area-inset-bottom));
-  }
-  .zoom-controls {
-    bottom: calc(17px + env(safe-area-inset-bottom));
   }
   .musician-stats {
     margin-bottom: 14px;
@@ -1135,9 +1057,6 @@ select {
     font-size: 10px;
   }
   .section-caption {
-    font-size: 10px;
-  }
-  .interaction-hint {
     font-size: 10px;
   }
 }
