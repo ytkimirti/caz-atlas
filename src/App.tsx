@@ -996,11 +996,49 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               <span className="section-caption">GRUP / PROJE</span>
               <ul>
                 {musicianEnsembles.map((ensemble) => (
-                  <li key={ensemble.id}>
-                    <span>{ensemble.name}</span>
-                    <small>
-                      {number(ensemble.musicians[musician.id])} konser
-                    </small>
+                  <li key={`${musician.id}:${ensemble.id}`}>
+                    <details>
+                      <summary>
+                        <ChevronDown size={14} aria-hidden="true" />
+                        <span>{ensemble.name}</span>
+                        <small>
+                          {number(ensemble.musicians[musician.id])} konser
+                        </small>
+                      </summary>
+                      <div className="ensemble-roster collaborators">
+                        <div className="collaborator-heading">
+                          <span>Konser kadroları</span>
+                          <small>Bu projede</small>
+                        </div>
+                        {Object.entries(ensemble.musicians)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([id, concerts]) => {
+                            const member = byId.get(Number(id));
+                            if (!member) return null;
+                            return (
+                              <button
+                                key={id}
+                                aria-current={
+                                  member.id === musician.id ? "true" : undefined
+                                }
+                                onClick={() => {
+                                  if (!visibleIds.has(member.id))
+                                    setMinConcerts(null);
+                                  setHoveredId(null);
+                                  pick(member.id);
+                                }}
+                                onMouseEnter={() => setHoveredId(member.id)}
+                                onMouseLeave={() => setHoveredId(null)}
+                                onFocus={() => setHoveredId(member.id)}
+                                onBlur={() => setHoveredId(null)}
+                              >
+                                <span>{member.name}</span>
+                                <small>{number(concerts)} konser</small>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </details>
                   </li>
                 ))}
               </ul>
