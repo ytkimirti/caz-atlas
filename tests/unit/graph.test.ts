@@ -4,7 +4,7 @@ import {
   shortestPath,
   mergeEdge,
   filterGraph,
-  edgesBySharedConcerts,
+  topCollaboratorEdges,
 } from "../../src/graph";
 import type { Atlas, Edge } from "../../src/types";
 import { normalize } from "../../src/types";
@@ -41,21 +41,51 @@ describe("Musician graph", () => {
     expect(normalize("İlhan Şen")).toBe(normalize("ilhan sen"));
     expect(normalize("Önder Focan")).toBe(normalize("onder focan"));
   });
-  test("shared concert threshold includes the boundary and all qualifying hub ties", () => {
+  test("keeps each musician's strongest partners even with few shared concerts", () => {
+    const edges = [
+      { source: 1, target: 2, weight: 100 },
+      { source: 1, target: 3, weight: 2 },
+      { source: 2, target: 3, weight: 1 },
+      { source: 4, target: 5, weight: 1 },
+    ];
+    expect(topCollaboratorEdges(edges, 1)).toEqual([
+      edges[0],
+      edges[1],
+      edges[3],
+    ]);
+    expect(topCollaboratorEdges(edges, 2)).toEqual(edges);
+    expect(topCollaboratorEdges(edges, null)).toEqual(edges);
+    expect(topCollaboratorEdges([], 5)).toEqual([]);
+    expect(topCollaboratorEdges(edges, 0)).toEqual([]);
+  });
+  test("one endpoint's choice is sufficient, so hubs can exceed the limit", () => {
     const edges = [2, 3, 4, 5].map((id) => ({
       source: 1,
       target: id,
       weight: 10 - id,
     }));
-    // A musician's other, stronger ties must not hide this five-concert tie.
-    expect(edgesBySharedConcerts(edges, 5)).toEqual(edges);
-    expect(edgesBySharedConcerts(edges, 6)).toEqual(edges.slice(0, 3));
-    expect(edgesBySharedConcerts(edges, 9)).toEqual([]);
-    expect(edgesBySharedConcerts([], 1)).toEqual([]);
-    expect(edgesBySharedConcerts(fixture.edges, 1)).toEqual(fixture.edges);
+    expect(topCollaboratorEdges(edges, 1)).toEqual(edges);
   });
-  test("hidden single-concert ties remain available for hover and shortest paths", () => {
-    expect(edgesBySharedConcerts(fixture.edges, 2)).not.toContainEqual({
+  test("equal weights are deterministic across edge order and direction", () => {
+    const edges = [
+      { source: 1, target: 2, weight: 1 },
+      { source: 1, target: 3, weight: 1 },
+      { source: 2, target: 3, weight: 1 },
+    ];
+    expect(topCollaboratorEdges(edges, 1)).toEqual(edges.slice(0, 2));
+    expect(topCollaboratorEdges([...edges].reverse(), 1)).toEqual([
+      edges[1],
+      edges[0],
+    ]);
+    const reversed = edges.map((e) => ({
+      ...e,
+      source: e.target,
+      target: e.source,
+    }));
+    expect(topCollaboratorEdges(reversed, 1)).toEqual(reversed.slice(0, 2));
+  });
+  test("hidden ties remain available for hover and shortest paths", () => {
+    expect(topCollaboratorEdges(fixture.edges, 1)).not.toContainEqual({
       source: 1,
       target: 4,
       weight: 1,
@@ -64,34 +94,39 @@ describe("Musician graph", () => {
     expect(full.get(1)).toContainEqual({ id: 4, weight: 1 });
     expect(shortestPath(full, 1, 4)).toEqual([1, 4]);
   });
-  test("shared concert threshold uses the selected venue's counts", () => {
+  test("ranks eligible partners using the selected venue's counts", () => {
     const venueGraph = filterGraph(
-      { ...fixture, edges: [{ source: 1, target: 2, weight: 1 }] },
-      { 1: 20, 2: 20 },
+      {
+        ...fixture,
+        edges: [
+          { source: 1, target: 2, weight: 1 },
+          { source: 2, target: 3, weight: 2 },
+          { source: 1, target: 3, weight: 3 },
+          { source: 1, target: 4, weight: 100 },
+        ],
+      },
+      { 1: 20, 2: 20, 3: 20, 4: 1 },
       10,
-      "",
-      { 1: 20, 2: 20 },
+      { 1: 20, 2: 20, 3: 20, 4: 1 },
     );
-    expect(edgesBySharedConcerts(fixture.edges, 3)).toContainEqual({
+    expect(topCollaboratorEdges(fixture.edges, 1)).toContainEqual({
       source: 1,
       target: 2,
       weight: 3,
     });
-    expect(edgesBySharedConcerts(venueGraph.edges, 3)).toEqual([]);
+    expect(topCollaboratorEdges(venueGraph.edges, 1)).toEqual([
+      { source: 2, target: 3, weight: 2 },
+      { source: 1, target: 3, weight: 3 },
+    ]);
   });
   test("concert threshold is strict and filters remove dangling edges", () => {
-    const filtered = filterGraph(
-      fixture,
-      { 1: 10, 2: 11, 3: 25, 4: 0 },
-      10,
-      "",
-    );
+    const filtered = filterGraph(fixture, { 1: 10, 2: 11, 3: 25, 4: 0 }, 10);
     expect(filtered.nodes.map((n) => n.id)).toEqual([2, 3]);
     expect(filtered.edges).toEqual([{ source: 2, target: 3, weight: 4 }]);
-    expect(filterGraph(fixture, {}, null, "").nodes).toHaveLength(5);
-    expect(filterGraph(fixture, {}, 0, "").nodes).toHaveLength(0);
+    expect(filterGraph(fixture, {}, null).nodes).toHaveLength(5);
+    expect(filterGraph(fixture, {}, 0).nodes).toHaveLength(0);
   });
-  test("venue membership and instrument filters intersect", () => {
+  test("venue filtering keeps collaborators across instruments", () => {
     const data = {
       ...fixture,
       nodes: fixture.nodes.map((n) => ({
@@ -99,11 +134,11 @@ describe("Musician graph", () => {
         group: n.id === 3 ? "Drums" : "Piano",
       })),
     };
-    const filtered = filterGraph(data, { 1: 99, 2: 20, 3: 30 }, 10, "Piano", {
+    const filtered = filterGraph(data, { 1: 99, 2: 20, 3: 30 }, 10, {
       2: 20,
       3: 30,
     });
-    expect(filtered.nodes.map((n) => n.id)).toEqual([2]);
-    expect(filtered.edges).toEqual([]);
+    expect(filtered.nodes.map((n) => n.id)).toEqual([2, 3]);
+    expect(filtered.edges).toEqual([{ source: 2, target: 3, weight: 4 }]);
   });
 });

@@ -6,7 +6,7 @@ Investigated 14 September 2026 against the checked-in concert graph.
 
 Use **Topluluklar** (Communities) as the default. Detect groups of frequent collaborators with Louvain, run D3 inside each group, then position communities with weighted springs between groups and size-aware collision spacing. Keep **ForceAtlas2**, **D3**, and **ngraph** available for comparison. There is no universal best force engine for this dataset: global springs still tend to put a densely connected network in one central mass.
 
-Communities are computed from the full filtered concert graph using log-compressed edge weights, deterministic traversal and a selectable resolution: 0.8 (broad), 1.5 (balanced), or 3 (detailed). They are layout aids, not verified bands, genres or social categories. Node colors still represent instruments. Cross-community collaboration weights influence positioning. Group size and collision spacing also affect distance, so it is not a quantitative relationship-strength scale. Disconnected networks are packed separately with no inferred relationship. Cross-group edges and shortest paths remain available.
+Communities are computed from the full-history graph under the venue and concert-count filters using log-compressed edge weights, deterministic traversal and a selectable resolution: 0.8 (broad), 1.5 (balanced), or 3 (detailed). Timeline changes reveal musicians and relationships without recomputing their positions. Communities are layout aids, not verified bands, genres or social categories. Node colors still represent instruments. Cross-community collaboration weights influence positioning. Group size and collision spacing also affect distance, so it is not a quantitative relationship-strength scale. Disconnected networks are packed separately with no inferred relationship. Cross-group edges and shortest paths remain available.
 
 ## Candidates and sources
 
@@ -29,7 +29,7 @@ The old strongest-three layout heuristic could also discard weak bridges between
 
 ## Implementation choices
 
-- All computation runs in a terminable Web Worker. Switching engine, spacing or filters cancels obsolete work; selection and hover changes do not restart it.
+- All computation runs in a terminable Web Worker. Switching engine, spacing, grouping, venue or concert threshold cancels obsolete work; timeline, instrument highlights, selection and hover changes do not restart it.
 - Previous positions stay visible while a replacement layout computes. A failed worker preserves the displayed positions and shows an accessible recovery message with a retry action, including when mobile panels are open.
 - `engine`, `spacing`, and `resolution` persist in the URL. Unknown values fall back to validated defaults.
 - Global D3, ForceAtlas2 and ngraph layouts normalize components by population and typical radius, compressing long radial tails. Communities mode uses its own compact local simulations and preserves the final geometry without radial compression.
@@ -53,7 +53,7 @@ The current default filter contains 1,427 musicians. Measurements on the checked
 
 The full 14,714-person archive produces 3,396 communities at the balanced setting, including 2,790 isolates. On this machine, the community calculation took around 2 seconds for the default view and 14–17 seconds for the full archive in Bun. Timing depends on the runtime and hardware; simulations use bounded iterations, not a convergence guarantee.
 
-Regression fixtures verify distinct connected communities, preferential proximity along a planted chain, nonintersecting group circles, stable geometry when disconnected networks are packed, deterministic output at each resolution, and unmodified input relationships. Browser checks exercise all grouping levels, URL restoration, mobile controls and the complete archive. Changing grouping does not change the number of rendered relationships or the shared-concert filter.
+Regression fixtures verify distinct connected communities, preferential proximity along a planted chain, nonintersecting group circles, stable geometry when disconnected networks are packed, deterministic output at each resolution, and unmodified input relationships. Browser checks exercise all grouping levels, URL restoration, mobile controls and the complete archive. Changing grouping does not change the number of rendered relationships or the collaborator filter.
 
 The read-only `benchmark:layouts` command still compares the original force layout with the current implementation at a 1512 × 982 viewport. Its central-density metric is not a community-quality measure: a meaningful arrangement can place well-separated groups in the middle of the screen. Circle separation and preservation of relationships are the relevant checks for this revision.
 
@@ -66,6 +66,7 @@ ATLAS_TEST_URL=http://localhost:18884 bun run test:ui
 ATLAS_TEST_URL=http://localhost:18884 bun run test:layouts
 ATLAS_TEST_URL=http://localhost:18884 bun run test:communities
 ATLAS_TEST_URL=http://localhost:18884 bun run test:progress
+ATLAS_TEST_URL=http://localhost:18884 bun run test:timeline
 bun run benchmark:layouts
 bun run benchmark:layouts --all --engine=communities
 ```

@@ -1,7 +1,13 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
+import type { Atlas, Edge, Ensemble } from "./types";
 import type { LayoutEngine, LayoutStatus } from "./layout-options";
 import type { LayoutResponse } from "./layout";
-import type { Atlas, Edge, Ensemble } from "./types";
 import { groupInfo } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
 import { clusterBounds, ensembleClusters } from "./ensembles";
@@ -14,6 +20,8 @@ export interface NetworkHandle {
 }
 interface Props {
   data: Pick<Atlas, "nodes" | "edges">;
+  layoutData: Pick<Atlas, "nodes" | "edges">;
+  layoutCounts: Record<string, number>;
   edges: Edge[];
   counts: Record<string, number>;
   ensembles: Ensemble[];
@@ -23,6 +31,7 @@ interface Props {
   hovered: number | null;
   path: number[];
   labels: boolean;
+  instrument: string;
   engine: LayoutEngine;
   spacing: number;
   resolution: number;
@@ -34,8 +43,24 @@ interface Props {
 const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previousPositions = useRef(new Map<number, { x: number; y: number }>());
-  const state = useRef(props);
-  state.current = props;
+  const neighbors = useMemo(() => adjacency(props.data), [props.data]);
+  const edgesByKey = useMemo(
+    () =>
+      new Map(props.data.edges.map((e) => [edgeKey(e.source, e.target), e])),
+    [props.data],
+  );
+  const clusters = useMemo(
+    () =>
+      ensembleClusters(
+        props.ensembles,
+        props.ensembleEdges,
+        new Set(props.data.nodes.map((n) => n.id)),
+      ),
+    [props.ensembles, props.ensembleEdges, props.data],
+  );
+  const derived = { ...props, neighbors, edgesByKey, clusters };
+  const state = useRef(derived);
+  state.current = derived;
   const api = useRef<NetworkHandle>({
     fit() {},
     zoom() {},
@@ -60,7 +85,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       props.hovered,
       props.path,
       props.labels,
+      props.instrument,
       props.edges,
+      props.data,
+      props.counts,
       props.ensembles,
       props.showEnsembles,
     ],
@@ -69,25 +97,26 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
-    const nodes = props.data.nodes;
+    const nodes = props.layoutData.nodes;
     const positions = new Map(
       nodes.map((n) => [
         n.id,
         previousPositions.current.get(n.id) ?? { x: n.x, y: n.y },
       ]),
     );
-    const clusters = ensembleClusters(
-      props.ensembles,
-      props.ensembleEdges,
-      new Set(positions.keys()),
+    const opacity = new Map(props.data.nodes.map((n) => [n.id, 1]));
+    const animatedEdges = new Map(
+      props.edges.map((edge) => [
+        edgeKey(edge.source, edge.target),
+        { edge, alpha: 1 },
+      ]),
     );
-    const neighbors = adjacency(props.data);
-    const edgesByKey = new Map(
-      props.data.edges.map((e) => [edgeKey(e.source, e.target), e]),
-    );
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let lastFrame = 0;
     const ranked = [...nodes].sort(
       (a, b) =>
-        (props.counts[b.id] || b.degree) - (props.counts[a.id] || a.degree),
+        (props.layoutCounts[b.id] || b.degree) -
+        (props.layoutCounts[a.id] || a.degree),
     );
     let width = 0,
       height = 0,
@@ -292,9 +321,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         worker.postMessage({
           nodes: nodes.map((n) => ({
             id: n.id,
-            count: props.counts[n.id] || 0,
+            count: props.layoutCounts[n.id] || 0,
           })),
-          edges: props.data.edges,
+          edges: props.layoutData.edges,
           engine: props.engine,
           spacing: props.spacing,
           resolution: props.resolution,
@@ -309,7 +338,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function hit(x: number, y: number) {
       let id: number | null = null,
         nearest = Infinity;
-      for (const n of nodes) {
+      for (const n of state.current.data.nodes) {
         const p = point(n.id),
           distance = Math.hypot(p.x - x, p.y - y);
         if (distance <= Math.max(7, radius(n.id) + 3) && distance < nearest) {
@@ -421,6 +450,39 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.dataset.animating = String(camera !== null);
       canvas.dataset.zoom = String(zoom);
       const s = state.current;
+      const { neighbors, edgesByKey, clusters } = s;
+      const visible = new Set(s.data.nodes.map((n) => n.id));
+      const delta = motion.matches
+        ? 1
+        : Math.min(32, now - (lastFrame || now - 16)) / 300;
+      lastFrame = now;
+      let animating = false;
+      for (const node of nodes) {
+        const target = visible.has(node.id) ? 1 : 0,
+          current = opacity.get(node.id) || 0;
+        const next =
+          target > current
+            ? Math.min(target, current + delta)
+            : Math.max(target, current - delta);
+        opacity.set(node.id, next);
+        if (next !== target) animating = true;
+      }
+      const visibleEdges = new Set(
+        s.edges.map((e) => edgeKey(e.source, e.target)),
+      );
+      for (const edge of s.edges) {
+        const key = edgeKey(edge.source, edge.target);
+        if (!animatedEdges.has(key)) animatedEdges.set(key, { edge, alpha: 0 });
+      }
+      for (const [key, item] of animatedEdges) {
+        const target = visibleEdges.has(key) ? 1 : 0;
+        item.alpha =
+          target > item.alpha
+            ? Math.min(target, item.alpha + delta)
+            : Math.max(target, item.alpha - delta);
+        if (item.alpha !== target) animating = true;
+        if (!item.alpha && !target) animatedEdges.delete(key);
+      }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const focus = s.hovered ?? s.selected;
@@ -431,29 +493,49 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       );
       const routeNodes = new Set(s.path),
         routeEdges = pathEdges(s.path);
+      const highlighted = new Set(
+        s.data.nodes
+          .filter((node) => node.group === s.instrument)
+          .map((node) => node.id),
+      );
       const emphasized = new Set([...connected, ...routeNodes]);
       if (s.selected !== null) emphasized.add(s.selected);
+      function line(e: Edge) {
+        if (!positions.has(e.source) || !positions.has(e.target)) return;
+        const a = point(e.source),
+          b = point(e.target);
+        if (
+          (a.x < 0 && b.x < 0) ||
+          (a.y < 0 && b.y < 0) ||
+          (a.x > width && b.x > width) ||
+          (a.y > height && b.y > height)
+        )
+          return;
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
       function lines(edges: Edge[], color: string, lineWidth: number) {
         ctx.beginPath();
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
-        for (const e of edges) {
-          if (!positions.has(e.source) || !positions.has(e.target)) continue;
-          const a = point(e.source),
-            b = point(e.target);
-          if (
-            (a.x < 0 && b.x < 0) ||
-            (a.y < 0 && b.y < 0) ||
-            (a.x > width && b.x > width) ||
-            (a.y > height && b.y > height)
-          )
-            continue;
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-        }
+        for (const e of edges) line(e);
         ctx.stroke();
       }
-      lines(s.edges, "#b8b9b080", 0.7);
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.strokeStyle = "#b8b9b080";
+      ctx.lineWidth = 0.7;
+      for (const { edge, alpha } of animatedEdges.values())
+        if (alpha === 1) line(edge);
+      ctx.stroke();
+      for (const { edge, alpha } of animatedEdges.values()) {
+        if (alpha === 1 || alpha === 0) continue;
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        line(edge);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
       if (focus !== null) {
         const focusEdges = (neighbors.get(focus) || []).map((n) =>
           edgesByKey.get(edgeKey(focus, n.id))!,
@@ -468,14 +550,20 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         );
       // Draw collaborators last so their larger markers stay above the graph.
       const drawOrder = [
-        ...nodes.filter((n) => !emphasized.has(n.id)),
+        ...nodes.filter((n) => !emphasized.has(n.id) && !highlighted.has(n.id)),
+        ...nodes.filter((n) => highlighted.has(n.id) && !emphasized.has(n.id)),
         ...nodes.filter((n) => emphasized.has(n.id)),
       ];
       for (const node of drawOrder) {
+        const alpha = opacity.get(node.id) || 0;
+        if (!alpha) continue;
+        ctx.globalAlpha = alpha;
         const p = point(node.id),
-          r = emphasized.has(node.id)
-            ? Math.max(4.5, radius(node.id) + 2)
-            : radius(node.id);
+          r =
+            (emphasized.has(node.id)
+              ? Math.max(4.5, radius(node.id) + 2)
+              : radius(node.id)) *
+            (0.5 + alpha * 0.5);
         if (p.x < -20 || p.y < -20 || p.x > width + 20 || p.y > height + 20)
           continue;
         const special = node.id === s.selected || node.id === s.hovered;
@@ -494,6 +582,16 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               ? "#28644d"
               : groupInfo(node.group).color;
         ctx.fill();
+        if (highlighted.has(node.id)) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2);
+          ctx.strokeStyle = "#fafaf6";
+          ctx.lineWidth = 4;
+          ctx.stroke();
+          ctx.strokeStyle = groupInfo(node.group).color;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
         if (special) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2);
@@ -502,6 +600,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.stroke();
         }
       }
+      ctx.globalAlpha = 1;
       const occupied: { x: number; y: number; w: number; h: number }[] = [];
       // Give the active people first choice of space, then their strongest ties.
       // Hovering a hub must share the same finite budget as every other view.
@@ -519,7 +618,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ...(s.selected === null ? [] : [s.selected]),
         ...s.path,
         ...collaborators.map((n) => n.id),
-        ...(focus === null && s.labels ? ranked.map((n) => n.id) : []),
+        ...(focus === null && s.labels
+          ? ranked
+              .filter((node) => !s.instrument || highlighted.has(node.id))
+              .map((node) => node.id)
+          : []),
       ]);
       const labelLimit =
         focus === null ? (width > 700 ? 20 : 8) : width > 700 ? 12 : 6;
@@ -530,7 +633,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         w: number;
         h: number;
       }[] = [];
-      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const byId = new Map(s.data.nodes.map((n) => [n.id, n]));
       for (const id of orderedIds) {
         if (visibleLabels.length >= labelLimit) break;
         const n = byId.get(id);
@@ -540,6 +643,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           r = special ? Math.max(4.5, radius(id) + 2) : radius(id);
         if (p.x < 16 || p.x > width - 16 || p.y < 60 || p.y > height - 55)
           continue;
+        ctx.globalAlpha = opacity.get(id) || 0;
         ctx.font = `${special ? 600 : 400} ${special ? 12 : 11}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
         const w = ctx.measureText(n.name).width + 10;
         let x = Math.max(4, Math.min(width - w - 4, p.x - w / 2)),
@@ -601,11 +705,15 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.fillText(n.name, x + w / 2, y + 13);
         visibleLabels.push({ id, x, y, w, h: 18 });
       }
+      ctx.globalAlpha = 1;
+      if (animating) invalidateFrame();
+      canvas.dataset.animating = String(animating || camera !== null);
+      canvas.dataset.visibleNodes = String(s.data.nodes.length);
       canvas.dataset.musicianLabels = JSON.stringify(visibleLabels);
       const visibleEnsembles: string[] = [];
       if (s.showEnsembles) {
         const labeledMembers = new Set<number>();
-        const markerBounds = nodes.map((node) => {
+        const markerBounds = s.data.nodes.map((node) => {
           const p = point(node.id);
           const r = radius(node.id) + 6;
           return { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2 };
@@ -655,6 +763,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       canvas.dataset.ensembles = JSON.stringify(visibleEnsembles);
       // Expose the rendered state for interaction checks.
       canvas.dataset.visibleEdges = String(s.edges.length);
+      canvas.dataset.highlighted = [...highlighted].join(",");
+      canvas.dataset.view = `${zoom},${panX},${panY}`;
       canvas.dataset.focus = focus === null ? "" : String(focus);
       canvas.dataset.path = s.path.join(",");
       canvas.dataset.selectedPosition =
@@ -677,10 +787,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       invalidate.current = () => {};
     };
   }, [
-    props.data,
-    props.counts,
-    props.ensembles,
-    props.ensembleEdges,
+    props.layoutData,
+    props.layoutCounts,
     props.engine,
     props.spacing,
     props.resolution,

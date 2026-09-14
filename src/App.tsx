@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowUpRight,
   Network as NetworkIcon,
   ChevronDown,
-  LocateFixed,
-  Minus,
-  Plus,
   Search,
   SlidersHorizontal,
   X,
 } from "lucide-react";
 import Network from "./Network";
+import Timeline from "./Timeline";
+import {
+  concertHistogram,
+  concertEnsembles,
+  createConcertWindow,
+  monthIndex,
+  monthValue,
+  readRange,
+} from "./chronology";
+import type { DateRange } from "./chronology";
 import {
   DEFAULT_ENGINE,
   groupingOptions,
@@ -28,7 +34,7 @@ import {
   adjacency,
   filterGraph,
   shortestPath,
-  edgesBySharedConcerts,
+  topCollaboratorEdges,
 } from "./graph";
 
 function MusicianSearch({
@@ -250,6 +256,27 @@ const EMPTY_ENSEMBLES: NonNullable<ConcertIndex["ensembles"]> = [];
 
 function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const bounds = useMemo<DateRange>(() => {
+    const events = concerts.timeline;
+    return events.length
+      ? [monthIndex(events[0].date), monthIndex(events[events.length - 1].date)]
+      : [monthIndex(concerts.meta.through), monthIndex(concerts.meta.through)];
+  }, [concerts]);
+  const [range, setRange] = useState<DateRange>(() =>
+    readRange(params.get("from"), params.get("to"), bounds),
+  );
+  const [cursor, setCursor] = useState(
+    () =>
+      readRange(
+        params.get("from"),
+        params.get("at") ?? params.get("to"),
+        range,
+      )[1],
+  );
+  function changeRange(next: DateRange) {
+    setRange(next);
+    setCursor(next[1]);
+  }
   const initialMin = Number(params.get("min") ?? 10);
   const [minConcerts, setMinConcerts] = useState<number | null>(
     params.get("min") === "all"
@@ -268,10 +295,12 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       ? params.get("instrument")!
       : "",
   );
-  const [minSharedConcerts, setMinSharedConcerts] = useState(
-    [1, 2, 5, 10].includes(Number(params.get("shared")))
-      ? Number(params.get("shared"))
-      : 5,
+  const [topCollaborators, setTopCollaborators] = useState<number | null>(
+    params.get("top") === "all"
+      ? null
+      : [1, 3, 5, 10].includes(Number(params.get("top")))
+        ? Number(params.get("top"))
+        : 5,
   );
   const [engine, setEngine] = useState(() => parseEngine(params.get("engine")));
   const [spacing, setSpacing] = useState(() =>
@@ -295,8 +324,43 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     () => concerts.venues.find((v) => v.id === venueId),
     [concerts, venueId],
   );
-  const counts = venue?.musicians ?? concerts.counts;
-  const ensembles = venue?.ensembles ?? concerts.ensembles ?? EMPTY_ENSEMBLES;
+  const layoutCounts = venue?.musicians ?? concerts.counts;
+  const layoutGraph = useMemo(
+    () =>
+      filterGraph(
+        { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
+        layoutCounts,
+        minConcerts,
+        layoutCounts,
+      ),
+    [data, concerts, layoutCounts, minConcerts, venue],
+  );
+  const queryConcerts = useMemo(
+    () => createConcertWindow(concerts.timeline, venueId),
+    [concerts, venueId],
+  );
+  const windowed = useMemo(
+    () => queryConcerts(range[0], cursor),
+    [queryConcerts, range[0], cursor],
+  );
+  const histogram = useMemo(
+    () => concertHistogram(concerts.timeline, bounds, venueId),
+    [concerts, bounds, venueId],
+  );
+  const allDates = range[0] === bounds[0] && cursor === bounds[1];
+  const ensembles = useMemo(
+    () =>
+      allDates
+        ? (venue?.ensembles ?? concerts.ensembles ?? EMPTY_ENSEMBLES)
+        : concertEnsembles(
+            concerts.timeline,
+            concerts.ensembles,
+            range[0],
+            cursor,
+            venueId,
+          ),
+    [allDates, venue, concerts, range[0], cursor, venueId],
+  );
   const musicianEnsembles = useMemo(
     () =>
       ensembles
@@ -304,16 +368,18 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         .sort((a, b) => b.musicians[selectedId!] - a.musicians[selectedId!]),
     [ensembles, selectedId],
   );
+  const counts = allDates ? layoutCounts : windowed.counts;
   const graph = useMemo(
     () =>
-      filterGraph(
-        { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
-        counts,
-        minConcerts,
-        instrument,
-        venue?.musicians,
-      ),
-    [data, concerts.edges, counts, minConcerts, instrument, venue],
+      allDates
+        ? layoutGraph
+        : filterGraph(
+            { nodes: layoutGraph.nodes, edges: windowed.edges },
+            counts,
+            minConcerts,
+            counts,
+          ),
+    [allDates, layoutGraph, windowed, counts, minConcerts],
   );
   const visibleIds = useMemo(
     () => new Set(graph.nodes.map((n) => n.id)),
@@ -331,8 +397,8 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
   }, [graph]);
   const neighbors = useMemo(() => adjacency(graph), [graph]);
   const edges = useMemo(
-    () => edgesBySharedConcerts(graph.edges, minSharedConcerts),
-    [graph, minSharedConcerts],
+    () => topCollaboratorEdges(graph.edges, topCollaborators),
+    [graph, topCollaborators],
   );
   const path = useMemo(
     () =>
@@ -348,6 +414,10 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || b.degree - a.degree,
       ),
     [graph, counts],
+  );
+  const highlightedMusicians = useMemo(
+    () => ranked.filter((node) => node.group === instrument),
+    [ranked, instrument],
   );
   const musician = selected === null ? null : byId.get(selected)!;
   const hoveredMusician = hovered === null ? null : byId.get(hovered)!;
@@ -366,11 +436,18 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
 
   useEffect(() => {
     const query = new URLSearchParams();
+    if (range[0] !== bounds[0]) query.set("from", monthValue(range[0]));
+    if (range[1] !== bounds[1]) query.set("to", monthValue(range[1]));
+    if (cursor !== range[1]) query.set("at", monthValue(cursor));
     if (minConcerts !== 10)
       query.set("min", minConcerts === null ? "all" : String(minConcerts));
     if (venueId) query.set("venue", venueId);
     if (instrument) query.set("instrument", instrument);
-    if (minSharedConcerts !== 5) query.set("shared", String(minSharedConcerts));
+    if (topCollaborators !== 5)
+      query.set(
+        "top",
+        topCollaborators === null ? "all" : String(topCollaborators),
+      );
     if (engine !== DEFAULT_ENGINE) query.set("engine", engine);
     if (resolution !== 1.5) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
@@ -384,9 +461,12 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     minConcerts,
     venueId,
     instrument,
-    minSharedConcerts,
+    topCollaborators,
     selected,
     byId,
+    range,
+    bounds,
+    cursor,
     engine,
     spacing,
     resolution,
@@ -412,9 +492,9 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
     return () => window.removeEventListener("keydown", listener);
   }, []);
   function resetFilters() {
+    changeRange([...bounds]);
     setMinConcerts(null);
-    setMinSharedConcerts(1);
-    setInstrument("");
+    setTopCollaborators(null);
     setVenueId("");
     setVenueQuery("");
   }
@@ -463,15 +543,20 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
       <Network
         ref={network}
         data={graph}
+        layoutData={layoutGraph}
+        layoutCounts={layoutCounts}
         edges={edges}
         counts={counts}
         ensembles={ensembles}
-        ensembleEdges={venue?.edges ?? concerts.edges}
+        ensembleEdges={
+          allDates ? (venue?.edges ?? concerts.edges) : windowed.edges
+        }
         showEnsembles={showEnsembles}
         selected={selected}
         hovered={hovered}
         path={path}
         labels={labels}
+        instrument={instrument}
         engine={engine}
         spacing={spacing}
         resolution={resolution}
@@ -548,33 +633,30 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           onSelect={pick}
           onHover={setHoveredId}
         />
-        <button
-          className={`filter-toggle surface ${filtersOpen ? "active" : ""}`}
-          aria-label="Filtreler"
-          aria-expanded={filtersOpen}
-          aria-controls="filters"
-          onClick={() => setFiltersOpen((v) => !v)}
-        >
-          <SlidersHorizontal size={17} />
-          <span>Filtreler</span>
-          {(minConcerts !== null ||
-            venueId ||
-            instrument ||
-            minSharedConcerts > 1) && <i className="filter-dot" />}
-        </button>
       </div>
 
-      {(minConcerts !== null ||
-        venue ||
-        instrument ||
-        minSharedConcerts > 1) && (
+      <button
+        className={`filter-toggle surface ${filtersOpen ? "active" : ""}`}
+        aria-label="Filtreler"
+        aria-expanded={filtersOpen}
+        aria-controls="filters"
+        onClick={() => setFiltersOpen((v) => !v)}
+      >
+        <SlidersHorizontal size={17} />
+        <span>Filtreler</span>
+        {(minConcerts !== null || venueId || topCollaborators !== null) && (
+          <i className="filter-dot" />
+        )}
+      </button>
+
+      {(minConcerts !== null || venue || topCollaborators !== null) && (
         <div className="active-filters">
-          {minSharedConcerts > 1 && (
+          {topCollaborators !== null && (
             <button
-              onClick={() => setMinSharedConcerts(1)}
-              aria-label="Ortak konser filtresini kaldır"
+              onClick={() => setTopCollaborators(null)}
+              aria-label="Bağlantı sınırını kaldır"
             >
-              En az {minSharedConcerts} ortak konser
+              Kişi başına ilk {topCollaborators} bağlantı
               <X size={12} />
             </button>
           )}
@@ -593,15 +675,6 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               aria-label="Mekan filtresini kaldır"
             >
               {venue.name}
-              <X size={12} />
-            </button>
-          )}
-          {instrument && (
-            <button
-              onClick={() => setInstrument("")}
-              aria-label="Enstrüman filtresini kaldır"
-            >
-              {groupInfo(instrument).name}
               <X size={12} />
             </button>
           )}
@@ -674,8 +747,10 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               ))}
             </div>
             <p className="field-note">
-              {venue ? "Seçilen mekandaki" : "Arşivdeki"} geçmiş konserler
-              sayılır.
+              {venue
+                ? "Seçilen mekan ve tarih aralığındaki"
+                : "Seçilen tarih aralığındaki"}{" "}
+              geçmiş konserler sayılır.
             </p>
           </div>
           <div className="filter-section">
@@ -733,43 +808,29 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             )}
           </div>
           <div className="filter-section">
-            <label className="field-heading" htmlFor="instrument">
-              Enstrüman
-            </label>
-            <div className="select-wrap">
-              <select
-                id="instrument"
-                value={instrument}
-                onChange={(e) => setInstrument(e.target.value)}
-              >
-                <option value="">Tüm enstrümanlar</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} />
-            </div>
-          </div>
-          <div className="filter-section">
             <div className="field-heading">
-              <span>En az ortak konser</span>
+              <span>En çok birlikte çaldığı kişiler</span>
             </div>
             <div className="presets">
-              {[1, 2, 5, 10].map((n) => (
+              {[1, 3, 5, 10, null].map((n) => (
                 <button
-                  key={n}
-                  aria-label={`En az ${n} ortak konser`}
-                  aria-pressed={minSharedConcerts === n}
-                  onClick={() => setMinSharedConcerts(n)}
+                  key={n ?? "all"}
+                  aria-label={
+                    n === null
+                      ? "Tüm bağlantılar"
+                      : `Kişi başına ilk ${n} bağlantı`
+                  }
+                  aria-pressed={topCollaborators === n}
+                  onClick={() => setTopCollaborators(n)}
                 >
-                  {n}
+                  {n ?? "Tümü"}
                 </button>
               ))}
             </div>
             <p className="field-note">
-              Aynı konserde birlikte çaldıkları kayıt sayısı. Üzerine gelince
+              Ortak konser sayısına göre, mevcut filtrelerde kişi başına en
+              güçlü bağlantılar. Bir kişinin listesinde olması yeterli; bu
+              yüzden bazı kişilerde daha fazla bağ görünebilir. Üzerine gelince
               veya seçince kişinin tüm bağları görünür.
             </p>
             <label className="check-label">
@@ -797,6 +858,79 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
           </div>
         </section>
       )}
+
+      <section
+        className="instrument-explorer surface"
+        aria-label="Enstrüman vurgulama"
+      >
+        <div className="instrument-control">
+          <div className="select-wrap">
+            <select
+              id="instrument"
+              aria-label="Enstrüman vurgula"
+              aria-describedby={instrument ? "instrument-summary" : undefined}
+              value={instrument}
+              onChange={(event) => setInstrument(event.target.value)}
+            >
+              <option value="">Enstrüman vurgula</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} />
+          </div>
+          {instrument && (
+            <button
+              className="icon-button"
+              aria-label="Vurgulamayı kaldır"
+              onClick={() => setInstrument("")}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {instrument && (
+          <>
+            <p
+              id="instrument-summary"
+              className="instrument-summary"
+              aria-live="polite"
+            >
+              Ağda {number(highlightedMusicians.length)} müzisyen vurgulanıyor.
+            </p>
+            {!musician && (
+              <>
+                <div className="collaborator-heading">
+                  <span>Konser sayısına göre</span>
+                  <small>{venue ? venue.name : "Arşiv"}</small>
+                </div>
+                <div
+                  className="collaborators instrument-ranking"
+                  onMouseLeave={() => setHoveredId(null)}
+                >
+                  {highlightedMusicians.map((node) => (
+                    <button
+                      key={node.id}
+                      onClick={() => pick(node.id)}
+                      onMouseEnter={() => setHoveredId(node.id)}
+                      onFocus={() => setHoveredId(node.id)}
+                      onBlur={() => setHoveredId(null)}
+                    >
+                      <span>{node.name}</span>
+                      <small>{number(counts[node.id] ?? 0)} konser</small>
+                    </button>
+                  ))}
+                  {!highlightedMusicians.length && (
+                    <p>Bu görünümde müzisyen yok.</p>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </section>
 
       {musician && (
         <section
@@ -883,7 +1017,7 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
         <div className="empty-state surface" role="status">
           <NetworkIcon size={26} aria-hidden="true" />
           <strong>Bu filtrelerde müzisyen yok.</strong>
-          <p>Konser eşiğini düşür veya başka bir mekan seç.</p>
+          <p>Konser eşiğini düşür veya tarih aralığını genişlet.</p>
           <button className="text-button" onClick={resetFilters}>
             Filtreleri temizle
           </button>
@@ -927,50 +1061,19 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               {number(neighbors.get(hovered!)?.length ?? 0)} bağ
             </span>
           </div>
-        ) : (
-          <p className="interaction-hint">
-            {selected !== null
-              ? "En kısa yol için başka bir müzisyenin üzerine gel."
-              : "Üzerine gel: bağlantılar · Tıkla: seç · Kaydır: yakınlaş"}
-          </p>
-        )}
+        ) : null}
       </div>
-      <div className="graph-footer">
-        <span>
-          {number(graph.nodes.length)} müzisyen <b>·</b> {number(edges.length)}{" "}
-          bağ
-        </span>
-        <a href="https://bizimcaz.com" target="_blank" rel="noreferrer">
-          Bizim Caz <ArrowUpRight size={10} />
-        </a>
-      </div>
-      <div className="zoom-controls surface" aria-label="Graf görünümü">
-        <button
-          className="icon-button"
-          aria-label="Uzaklaştır"
-          title="Uzaklaştır (-)"
-          onClick={() => network.current?.zoom(1 / 1.3)}
-        >
-          <Minus size={17} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label="Yakınlaştır"
-          title="Yakınlaştır (+)"
-          onClick={() => network.current?.zoom(1.3)}
-        >
-          <Plus size={17} />
-        </button>
-        <span />
-        <button
-          className="icon-button"
-          aria-label="Grafı ekrana sığdır"
-          title="Ekrana sığdır (0)"
-          onClick={() => network.current?.fit()}
-        >
-          <LocateFixed size={17} />
-        </button>
-      </div>
+      <Timeline
+        bounds={bounds}
+        range={range}
+        cursor={cursor}
+        histogram={histogram}
+        musicians={graph.nodes.length}
+        edges={edges.length}
+        concerts={windowed.concerts}
+        onRange={changeRange}
+        onCursor={setCursor}
+      />
     </main>
   );
 }

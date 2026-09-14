@@ -52,7 +52,14 @@ export interface Venue {
   edges: Edge[];
   ensembles: Ensemble[];
 }
+export interface DatedConcert {
+  ensemble?: string;
+  date: string;
+  venue: string;
+  musicians: number[];
+}
 export interface ConcertIndex {
+  timeline: DatedConcert[];
   ensembles: Ensemble[];
   counts: Record<string, number>;
   edges: Edge[];

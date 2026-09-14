@@ -134,3 +134,21 @@ test("solo bills, open sessions and missing titles do not imply a band", () => {
   expect(index.ensembles).toEqual([]);
   expect(index.counts[2]).toBe(4);
 });
+
+test("timeline shares deduplication, matching and past-only rules with concert totals", () => {
+  const show = make("a", ["İlhan Şen", "ilhan sen", "Same Name"]);
+  const index = indexConcerts(
+    nodes,
+    [
+      show,
+      show,
+      make("future", ["Asude Şaşmaz"], "Bova", "2026-10-01"),
+      make("earlier", ["Asude Şaşmaz"], "Bova", "2020-01-01"),
+    ],
+    "2026-09-14",
+  );
+  expect(index.timeline).toEqual([
+    { date: "2020-01-01", venue: "Bova", musicians: [2] },
+    { date: "2026-09-01", venue: "Nardis", musicians: [1] },
+  ]);
+});

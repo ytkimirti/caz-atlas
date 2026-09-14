@@ -1,4 +1,11 @@
-import type { ConcertIndex, Edge, Ensemble, Musician, Venue } from "./types";
+import type {
+  ConcertIndex,
+  DatedConcert,
+  Edge,
+  Ensemble,
+  Musician,
+  Venue,
+} from "./types";
 import { normalize } from "./types";
 import { edgeKey } from "./graph";
 
@@ -22,6 +29,7 @@ export function indexConcerts(
     const name = normalize(node.name.trim()).replace(/\s+/g, " ");
     names.set(name, [...(names.get(name) || []), node.id]);
   }
+  const timeline: DatedConcert[] = [];
   const ensembles = new Map<string, Ensemble>();
   const venueEnsembles = new Map<string, Map<string, Ensemble>>();
   function recordEnsemble(
@@ -81,6 +89,7 @@ export function indexConcerts(
       };
       venues.set(concert.venue, venue);
     }
+    let ensembleId: string | undefined;
     const title = concert.title?.trim().replace(/\s+/g, " ");
     // Concert titles identify ensembles/projects, not permanent memberships.
     // Solo artist bills and generic open sessions do not create group labels.
@@ -90,6 +99,7 @@ export function indexConcerts(
       !names.has(normalize(title)) &&
       !/jam\s*session|açık\s*sahne|acik\s*sahne|open\s*mic/i.test(title)
     ) {
+      ensembleId = normalize(title).replace(/\s+/g, " ");
       recordEnsemble(ensembles, title, ids);
       const local =
         venueEnsembles.get(concert.venue) ?? new Map<string, Ensemble>();
@@ -102,6 +112,12 @@ export function indexConcerts(
       venue.musicians[id] = (venue.musicians[id] || 0) + 1;
     }
     const members = [...ids];
+    timeline.push({
+      ...(ensembleId ? { ensemble: ensembleId } : {}),
+      date: concert.date,
+      venue: concert.venue,
+      musicians: members,
+    });
     for (let i = 0; i < members.length; i++)
       for (let j = i + 1; j < members.length; j++) {
         increment(edges, members[i], members[j]);
@@ -109,6 +125,7 @@ export function indexConcerts(
       }
   }
   return {
+    timeline: timeline.sort((a, b) => a.date.localeCompare(b.date)),
     ensembles: [...ensembles.values()].sort(
       (a, b) => b.concerts - a.concerts || a.id.localeCompare(b.id),
     ),
@@ -129,7 +146,7 @@ export function indexConcerts(
     },
   } satisfies Pick<
     ConcertIndex,
-    "counts" | "edges" | "venues" | "ensembles"
+    "counts" | "edges" | "venues" | "timeline" | "ensembles"
   > & {
     stats: Pick<
       ConcertIndex["meta"],

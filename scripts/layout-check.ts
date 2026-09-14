@@ -60,7 +60,7 @@ try {
   await expect(page.getByRole("status")).toContainText(
     "Mevcut görünüm korunuyor",
   );
-  await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
+  await page.keyboard.press("+");
   expect(errors).toEqual([]);
   console.log(
     "Layout checks passed: engines, full archive, cancellation, URL restore, invalid settings, worker fallback.",
