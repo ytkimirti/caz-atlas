@@ -149,27 +149,6 @@ export default function Timeline({
       aria-label="Zaman çizelgesi"
       style={{ "--play-duration": `${300 / speed}ms` } as CSSProperties}
     >
-      <div className="timeline-heading">
-        <div className="timeline-title">
-          <span className="timeline-eyebrow">
-            <i /> ZAMAN İÇİNDE CAZ
-          </span>
-          <span className="timeline-explainer">
-            Birlikte çaldıkça büyüyen bir ağ.
-          </span>
-        </div>
-        <div className="timeline-stats">
-          <span>
-            <strong>{number(musicians)}</strong> müzisyen
-          </span>
-          <span>
-            <strong>{number(edges)}</strong> güçlü bağ
-          </span>
-          <span title="Seçilen mekan ve tarihlerde arşivlenen konserler">
-            <strong>{number(concerts)}</strong> konser
-          </span>
-        </div>
-      </div>
       <div className="timeline-main">
         <div className="timeline-transport">
           <button
@@ -191,14 +170,7 @@ export default function Timeline({
           </button>
           <div className="timeline-now">
             <strong>{Math.floor(cursor / 12)}</strong>
-            <span>
-              {monthLabel(cursor).split(" ")[0]} <b>·</b>{" "}
-              {playing
-                ? "Oynatılıyor"
-                : cursor < range[1]
-                  ? "Duraklatıldı"
-                  : "Keşfet"}
-            </span>
+            <span>{monthLabel(cursor).split(" ")[0]}</span>
           </div>
           <button
             className="timeline-speed"
@@ -356,9 +328,15 @@ export default function Timeline({
           />
         </div>
         <div className="timeline-presets">
-          {[5, 10].map((years) => (
+          <span className="timeline-presets-label">Son</span>
+          {[1, 5, 10, 20].map((years) => (
             <button
               key={years}
+              aria-label={`Son ${years} yıl`}
+              aria-pressed={
+                range[0] === Math.max(bounds[0], bounds[1] - years * 12 + 1) &&
+                range[1] === bounds[1]
+              }
               onClick={() =>
                 updateRange([
                   Math.max(bounds[0], bounds[1] - years * 12 + 1),
@@ -366,19 +344,28 @@ export default function Timeline({
                 ])
               }
             >
-              Son {years} yıl
+              {years} yıl
             </button>
           ))}
           <button
             aria-label="Tüm tarihleri göster"
+            aria-pressed={range[0] === bounds[0] && range[1] === bounds[1]}
             onClick={() => updateRange([...bounds])}
           >
             <RotateCcw size={11} /> Tümü
           </button>
         </div>
-        <span className="timeline-help">
-          Çizgide gezin · Uçları sürükle, aralık seç
-        </span>
+        <div className="timeline-stats">
+          <span>
+            <strong>{number(musicians)}</strong> müzisyen
+          </span>
+          <span>
+            <strong>{number(edges)}</strong> güçlü bağ
+          </span>
+          <span title="Seçilen mekan ve tarihlerde arşivlenen konserler">
+            <strong>{number(concerts)}</strong> konser
+          </span>
+        </div>
         <a
           className="timeline-source"
           href="https://bizimcaz.com"

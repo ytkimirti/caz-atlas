@@ -39,7 +39,7 @@ try {
     x: 0,
     y: 0,
     width: 1512,
-    height: 768,
+    height: 854,
   });
   expect(
     await page.evaluate(
