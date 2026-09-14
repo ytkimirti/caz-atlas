@@ -37,17 +37,37 @@ export interface Atlas {
     complete: boolean;
   };
 }
-export type Mode = "network" | "islands" | "record" | "path";
+export interface Venue {
+  id: string;
+  name: string;
+  city: string;
+  concerts: number;
+  musicians: Record<string, number>;
+  edges: Edge[];
+}
+export interface ConcertIndex {
+  counts: Record<string, number>;
+  edges: Edge[];
+  venues: Venue[];
+  meta: {
+    source: string;
+    fetchedAt: string;
+    through: string;
+    concerts: number;
+    matchedMusicians: number;
+    unmatchedNames: number;
+  };
+}
 export const groups = [
-  { id: "Piano", name: "Piyano", color: "#72aef7" },
-  { id: "Brass", name: "Bakır üflemeli", color: "#f3a661" },
-  { id: "Woodwinds", name: "Tahta üflemeli", color: "#edc96d" },
-  { id: "Guitar", name: "Gitar", color: "#8ccaab" },
-  { id: "Bass", name: "Bas", color: "#c7db7c" },
-  { id: "Drums", name: "Davul", color: "#ab8be6" },
-  { id: "Vocals", name: "Vokal", color: "#e98dab" },
-  { id: "Strings", name: "Yaylılar", color: "#6ac6cf" },
-  { id: "Others", name: "Diğer / bilinmiyor", color: "#a1a6b0" },
+  { id: "Piano", name: "Piyano", color: "#577c9a" },
+  { id: "Brass", name: "Bakır üflemeli", color: "#b88a45" },
+  { id: "Woodwinds", name: "Tahta üflemeli", color: "#8e9560" },
+  { id: "Guitar", name: "Gitar", color: "#598878" },
+  { id: "Bass", name: "Bas", color: "#94775a" },
+  { id: "Drums", name: "Davul", color: "#877698" },
+  { id: "Vocals", name: "Vokal", color: "#b7787c" },
+  { id: "Strings", name: "Yaylılar", color: "#648d91" },
+  { id: "Others", name: "Diğer", color: "#92938c" },
 ];
 export const groupInfo = (id: string) =>
   groups.find((g) => g.id === id) || groups[groups.length - 1];

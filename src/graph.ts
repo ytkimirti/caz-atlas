@@ -1,4 +1,50 @@
-import type { Atlas, Edge } from "./types";
+import type { Atlas, Edge, Musician } from "./types";
+
+// A mutual top-k graph bounds each person's visible degree, even for hubs.
+// The full graph is retained separately for hover and shortest paths.
+export function strongestEdges(edges: Edge[], limit: number): Edge[] {
+  if (limit <= 0) return [];
+  const ranked = [...edges].sort(
+    (a, b) => b.weight - a.weight || a.source - b.source || a.target - b.target,
+  );
+  const choices = new Map<number, Set<string>>();
+  for (const edge of ranked) {
+    const key = edgeKey(edge.source, edge.target);
+    for (const id of [edge.source, edge.target]) {
+      const set = choices.get(id) || new Set<string>();
+      if (set.size < limit) set.add(key);
+      choices.set(id, set);
+    }
+  }
+  return ranked.filter((edge) => {
+    const key = edgeKey(edge.source, edge.target);
+    return (
+      choices.get(edge.source)?.has(key) && choices.get(edge.target)?.has(key)
+    );
+  });
+}
+
+export function filterGraph(
+  data: Pick<Atlas, "nodes" | "edges">,
+  counts: Record<string, number>,
+  minConcerts: number | null,
+  instrument: string,
+  venueMembers?: Record<string, number>,
+) {
+  const nodes: Musician[] = data.nodes.filter(
+    (node) =>
+      (!instrument || node.group === instrument) &&
+      (minConcerts === null || (counts[node.id] ?? 0) > minConcerts) &&
+      (!venueMembers || (venueMembers[node.id] ?? 0) > 0),
+  );
+  const ids = new Set(nodes.map((node) => node.id));
+  return {
+    nodes,
+    edges: data.edges.filter(
+      (edge) => ids.has(edge.source) && ids.has(edge.target),
+    ),
+  };
+}
 export function adjacency(data: Pick<Atlas, "nodes" | "edges">) {
   const map = new Map<number, { id: number; weight: number }[]>(
     data.nodes.map((n) => [n.id, []]),
