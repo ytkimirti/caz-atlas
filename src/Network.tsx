@@ -79,6 +79,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       panY = 0,
       frame = 0,
       disposed = false;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    type View = { zoom: number; x: number; y: number };
+    let camera: { from: View; to: View; start: number } | null = null;
     let hoverId: number | null = null;
     const pointers = new Map<number, { x: number; y: number }>();
     let startX = 0,
@@ -106,7 +109,23 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function invalidateFrame() {
       if (!frame && !disposed) frame = requestAnimationFrame(draw);
     }
-    function fit() {
+    function moveView(to: View, animate: boolean) {
+      // Large graphs avoid repeated canvas work. Wheel and touch stay direct.
+      if (animate && !reducedMotion.matches && nodes.length <= 2000) {
+        camera = {
+          from: { zoom, x: panX, y: panY },
+          to,
+          start: performance.now(),
+        };
+      } else {
+        camera = null;
+        zoom = to.zoom;
+        panX = to.x;
+        panY = to.y;
+      }
+      invalidateFrame();
+    }
+    function fit(animate = false) {
       if (!width || !height) return;
       if (!nodes.length) {
         invalidateFrame();
@@ -124,7 +143,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       const availableWidth = width - (width > 700 ? 120 : 42);
       const availableHeight = height - (width > 700 ? 160 : 230);
-      zoom = Math.max(
+      const nextZoom = Math.max(
         0.025,
         Math.min(
           2,
@@ -132,9 +151,14 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           availableHeight / (maxY - minY || 1),
         ),
       );
-      panX = width / 2 - ((minX + maxX) / 2) * zoom;
-      panY = height / 2 + 20 - ((minY + maxY) / 2) * zoom;
-      invalidateFrame();
+      moveView(
+        {
+          zoom: nextZoom,
+          x: width / 2 - ((minX + maxX) / 2) * nextZoom,
+          y: height / 2 + 20 - ((minY + maxY) / 2) * nextZoom,
+        },
+        animate,
+      );
     }
     function clearHover() {
       hoverId = null;
@@ -143,6 +167,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       invalidateFrame();
     }
     function zoomAt(factor: number, x = width / 2, y = height / 2) {
+      camera = null;
       const next = Math.max(0.025, Math.min(12, zoom * factor));
       panX = x - ((x - panX) * next) / zoom;
       panY = y - ((y - panY) * next) / zoom;
@@ -150,8 +175,23 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       clearHover();
     }
     api.current = {
-      fit,
-      zoom: zoomAt,
+      fit: () => {
+        clearHover();
+        fit(true);
+      },
+      zoom: (factor) => {
+        const base = camera?.to ?? { zoom, x: panX, y: panY };
+        const next = Math.max(0.025, Math.min(12, base.zoom * factor));
+        moveView(
+          {
+            zoom: next,
+            x: width / 2 - ((width / 2 - base.x) * next) / base.zoom,
+            y: height / 2 - ((height / 2 - base.y) * next) / base.zoom,
+          },
+          true,
+        );
+        clearHover();
+      },
       focus(id) {
         const p = positions.get(id);
         if (!p) return;
@@ -229,6 +269,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     }
     function down(event: PointerEvent) {
       if (event.button !== 0) return;
+      camera = null;
       const p = local(event);
       pointers.set(event.pointerId, p);
       canvas.setPointerCapture(event.pointerId);
@@ -299,8 +340,21 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     canvas.addEventListener("pointerleave", clearHover);
     canvas.addEventListener("wheel", wheel, { passive: false });
 
-    function draw() {
+    function draw(now: number) {
       frame = 0;
+      if (camera) {
+        const progress = reducedMotion.matches
+          ? 1
+          : Math.min(1, (now - camera.start) / 160);
+        const eased = 1 - (1 - progress) ** 3;
+        zoom = camera.from.zoom + (camera.to.zoom - camera.from.zoom) * eased;
+        panX = camera.from.x + (camera.to.x - camera.from.x) * eased;
+        panY = camera.from.y + (camera.to.y - camera.from.y) * eased;
+        if (progress === 1) camera = null;
+        else invalidateFrame();
+      }
+      canvas.dataset.animating = String(camera !== null);
+      canvas.dataset.zoom = String(zoom);
       const s = state.current;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);

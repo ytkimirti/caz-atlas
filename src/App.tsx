@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  Network as NetworkIcon,
   ChevronDown,
   LocateFixed,
   Minus,
@@ -117,7 +118,24 @@ function MusicianSearch({
             }
           }}
         />
-        <kbd>⌘ K</kbd>
+        {query ? (
+          <button
+            className="icon-button search-clear"
+            aria-label="Aramayı temizle"
+            onClick={() => {
+              setQuery("");
+              setCursor(0);
+              onHover(null);
+              wrap.current?.querySelector("input")?.focus();
+            }}
+          >
+            <X size={14} />
+          </button>
+        ) : (
+          <kbd aria-hidden="true">
+            {/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"} K
+          </kbd>
+        )}
       </div>
       {open && (
         <div
@@ -127,6 +145,9 @@ function MusicianSearch({
           aria-label="Müzisyenler"
           onMouseLeave={() => onHover(null)}
         >
+          <span className="search-caption">
+            {query ? "ARAMA SONUÇLARI" : "MÜZİSYENLERİ KEŞFET"}
+          </span>
           {selected !== null && (
             <p className="search-hint">
               Yolu görmek için bir ismin üzerine gel.
@@ -189,6 +210,13 @@ export default function App() {
         <span className="wordmark">
           caz<span>graf</span>
         </span>
+        {!error && (
+          <div className="loading-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </div>
+        )}
         <p role="status">{error || "Graf yükleniyor…"}</p>
         {error && (
           <button
@@ -649,11 +677,40 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
             />
             {musician.name}
           </h2>
-          <p className="musician-meta">
-            {groupInfo(musician.group).name} ·{" "}
-            {number(counts[musician.id] ?? 0)} konser ·{" "}
-            {number(collaborators.length)} bağ
-          </p>
+          <p className="musician-meta">{groupInfo(musician.group).name}</p>
+          <div className="musician-stats">
+            <div>
+              <strong>{number(counts[musician.id] ?? 0)}</strong>
+              <span>konser</span>
+            </div>
+            <div>
+              <strong>{number(collaborators.length)}</strong>
+              <span>müzisyenle bağ</span>
+            </div>
+          </div>
+          <div className="collaborator-heading">
+            <span>En çok birlikte çaldığı</span>
+            <small>Ortak konser</small>
+          </div>
+          <div
+            className="collaborators"
+            onMouseLeave={() => setHoveredId(null)}
+          >
+            {collaborators.slice(0, 6).map((c, i) => (
+              <button
+                key={c.id}
+                style={{ animationDelay: `${i * 18}ms` }}
+                onClick={() => pick(c.id)}
+                onMouseEnter={() => setHoveredId(c.id)}
+                onFocus={() => setHoveredId(c.id)}
+                onBlur={() => setHoveredId(null)}
+              >
+                <span>{byId.get(c.id)!.name}</span>
+                <small>{number(c.weight)}</small>
+              </button>
+            ))}
+            {!collaborators.length && <p>Bu filtrelerde bağlantısı yok.</p>}
+          </div>
           {musicianEnsembles.length > 0 && (
             <div className="musician-ensembles">
               <span className="section-caption">GRUP / PROJE</span>
@@ -670,36 +727,15 @@ function AtlasApp({ data, concerts }: { data: Atlas; concerts: ConcertIndex }) {
               <p>Arşivdeki konser adları ve o konserlerin kadroları.</p>
             </div>
           )}
-          <div className="collaborator-heading">
-            <span>En çok birlikte çaldığı</span>
-            <small>Ortak konser</small>
-          </div>
-          <div
-            className="collaborators"
-            onMouseLeave={() => setHoveredId(null)}
-          >
-            {collaborators.slice(0, 6).map((c) => (
-              <button
-                key={c.id}
-                onClick={() => pick(c.id)}
-                onMouseEnter={() => setHoveredId(c.id)}
-                onFocus={() => setHoveredId(c.id)}
-                onBlur={() => setHoveredId(null)}
-              >
-                <span>{byId.get(c.id)!.name}</span>
-                <small>{number(c.weight)}</small>
-              </button>
-            ))}
-            {!collaborators.length && <p>Bu filtrelerde bağlantısı yok.</p>}
-          </div>
           <p className="selection-hint">
-            Başka bir ismin üzerine gel, aranızdaki yolu gör.
+            Başka bir ismin üzerine gel, aralarındaki yolu gör.
           </p>
         </section>
       )}
 
       {!graph.nodes.length && (
         <div className="empty-state surface" role="status">
+          <NetworkIcon size={26} aria-hidden="true" />
           <strong>Bu filtrelerde müzisyen yok.</strong>
           <p>Konser eşiğini düşür veya başka bir mekan seç.</p>
           <button className="text-button" onClick={resetFilters}>
