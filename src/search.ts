@@ -45,9 +45,16 @@ export function searchAtlas(
   musicians.sort((a, b) => score(a.name) - score(b.name));
   bands.sort((a, b) => score(a.name) - score(b.name));
   // Reserve room for each kind so popular musicians cannot bury matching groups.
+  const musicianSlots = Math.min(
+    musicians.length,
+    Math.max(4, 8 - bands.length),
+  );
   const results =
     kind === "all" && musicians.length && bands.length
-      ? [...musicians.slice(0, 4), ...bands.slice(0, 4)]
+      ? [
+          ...musicians.slice(0, musicianSlots),
+          ...bands.slice(0, 8 - musicianSlots),
+        ]
       : [...musicians, ...bands].slice(0, 8);
   return results.sort((a, b) => score(a.name) - score(b.name));
 }

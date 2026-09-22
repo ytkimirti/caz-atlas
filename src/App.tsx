@@ -60,6 +60,7 @@ function AtlasSearch({
   ensembles,
   onEnsembleSelect,
   onOpen,
+  searchRequest,
   projectsReady,
   projectError,
   onRetry,
@@ -71,6 +72,7 @@ function AtlasSearch({
   ensembles: Ensemble[];
   onEnsembleSelect: (id: string) => void;
   onOpen: () => void;
+  searchRequest: number;
   projectsReady: boolean;
   projectError: boolean;
   onRetry: () => void;
@@ -110,6 +112,15 @@ function AtlasSearch({
   useEffect(() => {
     setCursor(0);
   }, [nodes]);
+  useEffect(() => {
+    if (!searchRequest) return;
+    // Wait for settings cleanup to remove inert from the mobile header.
+    wrap.current?.querySelector("input")?.focus();
+    setOpen(true);
+    setCursor(0);
+    onHover(null);
+    onOpen();
+  }, [searchRequest, onHover, onOpen]);
   function choose(result: SearchResult) {
     if (result.kind === "musician") onSelect(result.musician.id);
     else onEnsembleSelect(result.ensemble.id);
@@ -122,7 +133,8 @@ function AtlasSearch({
       className="search-wrap"
       ref={wrap}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (event.key === "Escape" && open && !event.nativeEvent.isComposing) {
+          event.preventDefault();
           event.stopPropagation();
           wrap.current?.querySelector("input")?.focus();
           setOpen(false);
@@ -154,6 +166,10 @@ function AtlasSearch({
             setOpen(true);
             onOpen();
           }}
+          onClick={() => {
+            setOpen(true);
+            onOpen();
+          }}
           onChange={(e) => {
             setQuery(e.target.value);
             setCursor(0);
@@ -161,16 +177,22 @@ function AtlasSearch({
             onHover(null);
           }}
           onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
               setOpen(true);
-              const next = Math.max(
-                0,
-                Math.min(
-                  results.length - 1,
-                  cursor + (e.key === "ArrowDown" ? 1 : -1),
-                ),
-              );
+              const current = Math.min(cursor, results.length - 1);
+              const next = open
+                ? Math.max(
+                    0,
+                    Math.min(
+                      results.length - 1,
+                      current + (e.key === "ArrowDown" ? 1 : -1),
+                    ),
+                  )
+                : e.key === "ArrowDown"
+                  ? 0
+                  : Math.max(0, results.length - 1);
               setCursor(next);
               hover(results[next]);
             }
@@ -187,6 +209,7 @@ function AtlasSearch({
             onClick={() => {
               setQuery("");
               setCursor(0);
+              setOpen(true);
               onHover(null);
               wrap.current?.querySelector("input")?.focus();
             }}
@@ -419,6 +442,8 @@ function AtlasApp({
   );
   const [layoutStatus, setLayoutStatus] = useState<LayoutStatus>("pending");
   const [searchUsed, setSearchUsed] = useState(false);
+  const [searchRequest, setSearchRequest] = useState(0);
+  const markSearchUsed = useCallback(() => setSearchUsed(true), []);
   const [selectedEnsembleId, setSelectedEnsembleId] = useState<string | null>(
     params.get("g"),
   );
@@ -666,9 +691,14 @@ function AtlasApp({
   ]);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        document.getElementById("main-search")?.focus();
+        setFiltersOpen(false);
+        setViewOpen(false);
+        setLegendOpen(false);
+        setSearchRequest((request) => request + 1);
+        return;
       }
       if (e.key === "Escape") {
         if (filtersOpen) setFiltersOpen(false);
@@ -809,7 +839,8 @@ function AtlasApp({
             projectsReady={projects !== null}
             projectError={projectError}
             onRetry={() => setProjectAttempt((n) => n + 1)}
-            onOpen={() => setSearchUsed(true)}
+            searchRequest={searchRequest}
+            onOpen={markSearchUsed}
             onEnsembleSelect={(id) => {
               setSelectedId(null);
               setHoveredId(null);

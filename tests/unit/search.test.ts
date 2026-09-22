@@ -61,3 +61,22 @@ test("empty queries rank groups by concert count without mutating input", () => 
   expect(ensembles[0].name).toBe("Occasional");
   expect(searchAtlas([], ensembles, "missing", "all")).toEqual([]);
 });
+
+test("mixed search fills spare slots while keeping both result kinds", () => {
+  const nodes = Array.from({ length: 12 }, (_, i) => musician(`Jazz ${i}`, i));
+  const ensembles = Array.from({ length: 12 }, (_, i) =>
+    band(`Jazz Band ${i}`),
+  );
+  for (const [people, bands, musicianCount] of [
+    [nodes, ensembles.slice(0, 1), 7],
+    [nodes.slice(0, 1), ensembles, 1],
+    [nodes, ensembles, 4],
+  ] as const) {
+    const results = searchAtlas(people, bands, "jazz", "all");
+    expect(results).toHaveLength(8);
+    expect(results.filter((result) => result.kind === "musician")).toHaveLength(
+      musicianCount,
+    );
+    expect(new Set(results.map((result) => result.id)).size).toBe(8);
+  }
+});

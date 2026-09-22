@@ -389,6 +389,17 @@ try {
     .getByRole("option")
     .first();
   await search.press("Tab"); // Clear button.
+  await expect(
+    page.getByRole("button", { name: "Aramayı temizle" }),
+  ).toBeFocused();
+  for (const name of ["Tümü", "Müzisyenler", "Gruplar"]) {
+    await page.keyboard.press("Tab");
+    await expect(
+      page
+        .getByRole("group", { name: "Arama türü" })
+        .getByRole("button", { name, exact: true }),
+    ).toBeFocused();
+  }
   await page.keyboard.press("Tab"); // First result, without moving the mouse.
   await expect(targetOption).toBeFocused();
   await expect(canvas).toHaveAttribute("data-path", expectedPath.join(","));

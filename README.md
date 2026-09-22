@@ -35,6 +35,8 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
 
+`⌘/Ctrl K` açık ayar panelini kapatıp aramaya odaklanır. Arama sonuçları kapalıyken kutuya yeniden tıklamak sonuçları açar; aşağı / yukarı ok ilk / son sonuçtan başlar. Arama açıkken ilk `Esc` sonuçları kapatır, sonraki `Esc` seçimi kaldırabilir.
+
 `Esc` önce açık ayar panelini veya rehberi kapatır; müzisyen seçimi korunur. Mobil ayar panelleri açıkken klavye odağı panelde kalır ve kapanınca açan düğmeye döner. 2D seçimler detay panelinin dışında görünür tutulur.
 
 Yerleşim Web Worker'da hesaplanır; motor veya filtre değişince önceki hesap iptal edilir. Topluluklar görünümü tam filtrelenmiş konser grafından bağlı gruplar bulur. Müzisyenler kendi topluluklarında yerleşir; ardından topluluklar aralarındaki ortak konserlere göre konumlanır. Her topluluğun boyutuna göre boşluk ayrılır, bağlantısız ağlar iç düzenleri korunarak dairesel biçimde yerleştirilir. Diğer motorlar güçlü ilişkilerle birlikte toplulukları birleştiren zayıf köprüleri korur. Bağlantısız kişiler ayrı alanlara yerleştirilir. Gruplar resmi müzik grupları değildir; gruplar arası uzaklık ilişki gücünü ölçmez. Çizgileri sadeleştirmek bağlantı verisini silmez. Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Mesafeler coğrafya veya zaman ifade etmez.
@@ -92,6 +94,7 @@ bun test
 bun run build
 ATLAS_TEST_URL=http://localhost:5173 bun run test:app
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
+ATLAS_TEST_URL=http://localhost:5173 bun run test:ux
 ATLAS_TEST_URL=http://localhost:5173 bun run test:3d
 ATLAS_TEST_URL=http://localhost:5173 bun run test:focus
 ATLAS_TEST_URL=http://localhost:5173 bun run test:timeline
