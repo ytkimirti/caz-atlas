@@ -10,6 +10,8 @@
     "data:fetch": "bun run scripts/collect.ts",
     "data:build": "bun run scripts/prepare.ts",
     "test": "bun test tests/unit",
+    "test:render": "bun run scripts/render-check.ts",
+    "benchmark:search": "bun run scripts/search-benchmark.ts",
     "test:ux": "bun run scripts/ux-check.ts",
     "test:ui": "bun run scripts/ui-check.ts",
     "test:app": "bun run scripts/app-check.ts",

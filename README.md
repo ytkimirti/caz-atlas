@@ -95,6 +95,7 @@ bun run build
 ATLAS_TEST_URL=http://localhost:5173 bun run test:app
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ux
+ATLAS_TEST_URL=http://localhost:5173 bun run test:render
 ATLAS_TEST_URL=http://localhost:5173 bun run test:3d
 ATLAS_TEST_URL=http://localhost:5173 bun run test:focus
 ATLAS_TEST_URL=http://localhost:5173 bun run test:timeline
@@ -103,6 +104,8 @@ ATLAS_TEST_URL=http://localhost:5173 bun run test:communities
 ATLAS_TEST_URL=http://localhost:5173 bun run test:progress
 bun run benchmark:layouts
 ```
+
+Arama performansını önceki sürümle karşılaştırmak için `bun run benchmark:search --baseline 8a22b70` kullanılır. Depodaki veriyle sonuç sırasını doğrular ve önbellek ısındıktan sonra beş adet 100 sorguluk ölçümün ortancasını raporlar. Bu ölçüm Bun içindeki arama hesabıdır; tarayıcı etkileşim süresi değildir. `test:render`, yerel geliştirme sunucusunda canlı grafın çizim süresini raporlar, sabit panellerin her karede yeniden ölçülmediğini ve 3D tekerlek yakınlaştırmasının canlı fizik tarafından geri alınmadığını doğrular.
 
 Birim testleri; kişi başına en güçlü bağlantı seçimini, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
 

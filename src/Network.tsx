@@ -9,6 +9,7 @@ import type { GraphData, Edge, Ensemble } from "./types";
 import type { LayoutEngine, LayoutStatus, ViewMode } from "./layout-options";
 import type { LayoutResponse } from "./layout";
 import { expandPlaybackView, frameNeighborhood, orbitRadius } from "./camera";
+import type { Viewport } from "./camera";
 import { project3D, sceneBounds } from "./projection";
 import type { Point3D } from "./projection";
 import { groupInfo } from "./types";
@@ -64,6 +65,72 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       new Map(props.data.edges.map((e) => [edgeKey(e.source, e.target), e])),
     [props.data],
   );
+  // These indexes depend on graph/selection changes, not camera or physics frames.
+  const visible = useMemo(
+    () => new Set(props.data.nodes.map((n) => n.id)),
+    [props.data],
+  );
+  const byId = useMemo(
+    () => new Map(props.data.nodes.map((n) => [n.id, n])),
+    [props.data],
+  );
+  const visibleEdges = useMemo(
+    () => new Set(props.edges.map((e) => edgeKey(e.source, e.target))),
+    [props.edges],
+  );
+  const emphasis = useMemo(() => {
+    const connected = new Set(
+      props.selected === null
+        ? []
+        : [
+            props.selected,
+            ...(neighbors.get(props.selected) ?? []).map((n) => n.id),
+          ],
+    );
+    const routeNodes = new Set(props.path);
+    const routeEdges = pathEdges(props.path);
+    const groupMembers = new Set(props.highlightedIds);
+    const highlighted = new Set(
+      props.data.nodes
+        .filter(
+          (node) =>
+            groupMembers.has(node.id) || node.group === props.instrument,
+        )
+        .map((node) => node.id),
+    );
+    return {
+      connected,
+      routeNodes,
+      routeEdges,
+      groupMembers,
+      highlighted,
+      emphasized: new Set([...connected, ...routeNodes]),
+    };
+  }, [
+    props.selected,
+    neighbors,
+    props.path,
+    props.highlightedIds,
+    props.data,
+    props.instrument,
+  ]);
+  const drawOrder = useMemo(() => {
+    const { emphasized, highlighted, routeNodes } = emphasis;
+    const nodes = props.layoutData.nodes;
+    const priority = (id: number) =>
+      id === props.selected
+        ? 3
+        : routeNodes.has(id)
+          ? 2
+          : (connectionStrengths.get(id) ?? 0);
+    return [
+      ...nodes.filter((n) => !emphasized.has(n.id) && !highlighted.has(n.id)),
+      ...nodes.filter((n) => highlighted.has(n.id) && !emphasized.has(n.id)),
+      ...nodes
+        .filter((n) => emphasized.has(n.id))
+        .sort((a, b) => priority(a.id) - priority(b.id)),
+    ];
+  }, [props.layoutData, props.selected, emphasis, connectionStrengths]);
   const clusters = useMemo(
     () =>
       ensembleClusters(
@@ -79,6 +146,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     connectionStrengths,
     edgesByKey,
     clusters,
+    visible,
+    byId,
+    visibleEdges,
+    ...emphasis,
+    drawOrder,
   };
   const state = useRef(derived);
   state.current = derived;
@@ -329,7 +401,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         animate,
       );
     }
-    function focusViewport() {
+    let viewportCache: Viewport | null = null;
+    function invalidateViewport() {
+      viewportCache = null;
+      invalidateFrame();
+    }
+    function focusViewport(): Viewport {
+      if (viewportCache) return viewportCache;
       const viewport = {
         left: 28,
         top:
@@ -380,6 +458,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           );
         }
       }
+      viewportCache = viewport;
       return viewport;
     }
     function focusNeighborhood(id: number, animate = true) {
@@ -499,8 +578,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         clearHover();
       },
     };
-    invalidate.current = invalidateFrame;
+    invalidate.current = invalidateViewport;
     const observer = new ResizeObserver(() => {
+      viewportCache = null;
       const bounds = canvas.getBoundingClientRect();
       width = bounds.width;
       height = bounds.height;
@@ -516,17 +596,28 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
     });
     observer.observe(canvas);
-    const panels = new ResizeObserver(invalidateFrame);
+    const panels = new ResizeObserver(invalidateViewport);
+    const panelRoot = canvas.parentElement!;
+    const panelSelector =
+      ".selection-panel, .instrument-explorer, .timeline, .filter-panel, .layout-controls";
     function observePanels() {
       panels.disconnect();
-      for (const panel of canvas.parentElement!.querySelectorAll(
-        ".selection-panel, .instrument-explorer, .timeline, .filter-panel, .layout-controls",
-      ))
+      for (const panel of panelRoot.querySelectorAll(panelSelector))
         panels.observe(panel);
-      invalidateFrame();
+      invalidateViewport();
     }
+    // CSS translation changes a panel's bounds without resizing its box.
+    function finishPanelAnimation(event: Event) {
+      if (
+        event.target instanceof Element &&
+        event.target.matches(panelSelector)
+      )
+        invalidateViewport();
+    }
+    panelRoot.addEventListener("animationend", finishPanelAnimation);
+    panelRoot.addEventListener("animationcancel", finishPanelAnimation);
     const panelChanges = new MutationObserver(observePanels);
-    panelChanges.observe(canvas.parentElement!, { childList: true });
+    panelChanges.observe(panelRoot, { childList: true });
     observePanels();
     let worker: Worker | null = null;
     let generation = 0;
@@ -609,7 +700,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
     }
     startLayout();
-    void document.fonts.ready.then(invalidateFrame);
+    void document.fonts.ready.then(invalidateViewport);
 
     function focusPriority(id: number) {
       const s = state.current;
@@ -752,6 +843,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     }
     function wheel(event: WheelEvent) {
       event.preventDefault();
+      autoFrame = false;
       const p = local(event);
       const delta =
         event.deltaY *
@@ -963,8 +1055,20 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       canvas.dataset.animating = String(camera !== null);
       canvas.dataset.zoom = String(zoom);
-      const { neighbors, edgesByKey, clusters } = s;
-      const visible = new Set(s.data.nodes.map((n) => n.id));
+      const {
+        neighbors,
+        edgesByKey,
+        clusters,
+        visible,
+        visibleEdges,
+        byId,
+        connected,
+        routeNodes,
+        routeEdges,
+        groupMembers,
+        highlighted,
+        emphasized,
+      } = s;
       const delta = motion.matches
         ? 1
         : Math.min(32, now - (lastFrame || now - 16)) / 300;
@@ -980,9 +1084,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         opacity.set(node.id, next);
         if (next !== target) animating = true;
       }
-      const visibleEdges = new Set(
-        s.edges.map((e) => edgeKey(e.source, e.target)),
-      );
       for (const edge of s.edges) {
         const key = edgeKey(edge.source, edge.target);
         if (!animatedEdges.has(key)) animatedEdges.set(key, { edge, alpha: 0 });
@@ -999,23 +1100,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const focus = s.selected;
-      const connected = new Set(
-        focus === null
-          ? []
-          : [focus, ...(neighbors.get(focus) || []).map((n) => n.id)],
-      );
-      const routeNodes = new Set(s.path),
-        routeEdges = pathEdges(s.path);
-      const groupMembers = new Set(s.highlightedIds);
-      const highlighted = new Set(
-        s.data.nodes
-          .filter(
-            (node) => groupMembers.has(node.id) || node.group === s.instrument,
-          )
-          .map((node) => node.id),
-      );
-      const emphasized = new Set([...connected, ...routeNodes]);
-      if (s.selected !== null) emphasized.add(s.selected);
       function line(e: Edge) {
         if (!positions.has(e.source) || !positions.has(e.target)) return;
         const a = point(e.source),
@@ -1092,27 +1176,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           3.2,
         );
       // Draw collaborators last so their larger markers stay above the graph.
-      const drawOrder = [
-        ...nodes.filter((n) => !emphasized.has(n.id) && !highlighted.has(n.id)),
-        ...nodes.filter((n) => highlighted.has(n.id) && !emphasized.has(n.id)),
-        ...nodes
-          .filter((n) => emphasized.has(n.id))
-          .sort((a, b) => {
-            const priority = (id: number) =>
-              id === s.selected
-                ? 3
-                : routeNodes.has(id)
-                  ? 2
-                  : (s.connectionStrengths.get(id) ?? 0);
-            return priority(a.id) - priority(b.id);
-          }),
-      ];
-      if (spatial)
-        drawOrder.sort(
-          (a, b) =>
-            focusPriority(a.id) - focusPriority(b.id) ||
-            projected.get(a.id)!.depth - projected.get(b.id)!.depth,
-        );
+      const drawOrder = spatial
+        ? [...s.drawOrder].sort(
+            (a, b) =>
+              focusPriority(a.id) - focusPriority(b.id) ||
+              projected.get(a.id)!.depth - projected.get(b.id)!.depth,
+          )
+        : s.drawOrder;
       for (const node of drawOrder) {
         const alpha = opacity.get(node.id) || 0;
         if (!alpha) continue;
@@ -1238,7 +1308,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         w: number;
         h: number;
       }[] = [];
-      const byId = new Map(s.data.nodes.map((n) => [n.id, n]));
       for (const id of orderedIds) {
         if (visibleLabels.length >= labelLimit) break;
         const n = byId.get(id);
@@ -1406,6 +1475,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       observer.disconnect();
       panels.disconnect();
       panelChanges.disconnect();
+      panelRoot.removeEventListener("animationend", finishPanelAnimation);
+      panelRoot.removeEventListener("animationcancel", finishPanelAnimation);
       worker?.terminate();
       canvas.removeEventListener("keydown", keydown);
       canvas.removeEventListener("pointerdown", down);

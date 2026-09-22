@@ -80,3 +80,82 @@ test("mixed search fills spare slots while keeping both result kinds", () => {
     expect(new Set(results.map((result) => result.id)).size).toBe(8);
   }
 });
+
+test("ranking keeps exact and prefix matches ahead of popular partial matches", () => {
+  const ensembles = [
+    band("The Jazz Orchestra", 100),
+    band("Jazz Quartet", 20),
+    band("Jazz Trio", 20),
+    band("Jazz", 1),
+    band("Jazz Duo", 5),
+  ];
+  expect(
+    searchAtlas([], ensembles, "jazz", "ensemble").map((result) => result.name),
+  ).toEqual([
+    "Jazz",
+    "Jazz Quartet",
+    "Jazz Trio",
+    "Jazz Duo",
+    "The Jazz Orchestra",
+  ]);
+  const nodes = Array.from({ length: 20 }, (_, id) =>
+    musician(`Jazz Guest ${id}`, id),
+  );
+  nodes.push(musician("Jazz", 21));
+  expect(
+    searchAtlas(nodes, [], "jazz", "musician").map((result) => result.id),
+  ).toEqual([
+    "musician-21",
+    "musician-0",
+    "musician-1",
+    "musician-2",
+    "musician-3",
+    "musician-4",
+    "musician-5",
+    "musician-6",
+  ]);
+});
+
+test("cached labels refresh when names, aliases or concert counts change", () => {
+  const node = musician("Önder Focan");
+  const ensembles = [band("Old Quartet", 10), band("New Trio", 5)];
+  expect(searchAtlas([node], ensembles, "onder", "all")[0].name).toBe(
+    "Önder Focan",
+  );
+  expect(searchAtlas([], ensembles, "", "ensemble")[0].name).toBe(
+    "Old Quartet",
+  );
+  node.name = "Can Tutuğ";
+  node.key = "cantutug";
+  ensembles[0].name = "New Quartet";
+  ensembles[1].concerts = 20;
+  expect(searchAtlas([node], ensembles, "onder", "all")).toEqual([]);
+  expect(searchAtlas([node], ensembles, "old", "all")).toEqual([]);
+  expect(searchAtlas([node], ensembles, "cantutug", "all")[0].name).toBe(
+    "Can Tutuğ",
+  );
+  expect(
+    searchAtlas([], ensembles, "new", "ensemble").map((result) => result.name),
+  ).toEqual(["New Trio", "New Quartet"]);
+  node.key = "newalias";
+  expect(searchAtlas([node], [], "cantutug", "all")).toEqual([]);
+  expect(searchAtlas([node], [], "newalias", "all")[0].name).toBe("Can Tutuğ");
+});
+
+test("repeated searches respect changing subsets and return independent arrays", () => {
+  const first = musician("Jazz Guitar", 1);
+  const second = musician("Jazz Drums", 2);
+  const initial = searchAtlas([first, second], [], "jazz", "musician");
+  initial.reverse();
+  expect(
+    searchAtlas([first, second], [], "jazz", "musician").map(
+      (result) => result.id,
+    ),
+  ).toEqual(["musician-1", "musician-2"]);
+  expect(
+    searchAtlas([second], [], "jazz", "musician").map((result) => result.id),
+  ).toEqual(["musician-2"]);
+  expect(searchAtlas([musician("Piano", 1)], [], "jazz", "musician")).toEqual(
+    [],
+  );
+});
