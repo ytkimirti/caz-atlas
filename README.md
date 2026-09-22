@@ -16,7 +16,7 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 
 ## Otomatik yayınlama
 
-`.github/workflows/deploy.yml`, `main` dalına her push sonrasında birim testlerini çalıştırır, Vercel üretim çıktısını GitHub Actions içinde oluşturur ve `--prebuilt` ile yayınlar. Actions sayfasındaki **Run workflow** düğmesiyle de `main` için çalıştırılabilir. Yayın adresi çalışmanın özetinde görünür.
+`.github/workflows/deploy.yml`, `main` dalına her push sonrasında birim testlerini çalıştırır, statik üretim çıktısını GitHub Actions içinde oluşturur ve `--prebuilt` ile yayınlar. Actions sayfasındaki **Run workflow** düğmesiyle de `main` için çalıştırılabilir. Yayın adresi çalışmanın özetinde görünür. Vite çıktısı Vercel Build Output API biçiminde paketlenir; uygulama sunucu ortam değişkeni kullanmadığından `vercel pull` gerekmez. Böylece yalnızca bu projeye erişebilen token ile yayın yapılabilir.
 
 Vercel'in GitHub entegrasyonunu kurmak veya GitHub hesabına erişim vermek gerekmez. [Vercel'in resmi GitHub Actions akışı](https://vercel.com/kb/guide/how-can-i-use-github-actions-with-vercel) kullanılır. İlk kurulum için [bu deponun Actions secrets ayarlarına](https://github.com/ytkimirti/caz-atlas/settings/secrets/actions) üç repository secret ekle:
 
