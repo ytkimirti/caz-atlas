@@ -14,6 +14,18 @@ Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizl
 
 `dev` ve `build`, yerel arşivlerden `public/data/runtime.json` ve `public/data/projects.json` dosyalarını otomatik üretir. Tarayıcı önce yalnızca küçük çalışma verisini yükler; grup / proje detayları yerleşim hazır olunca veya bir müzisyen seçilince ayrıca yüklenir. Proje verisi yüklenemese de graf çalışır; seçim ve görünüm panellerinden tekrar denenebilir. Kaynak arşivler değiştirilmez. Veriyi güncelledikten sonra sunucuyu yeniden başlat veya `bun run data:runtime --build` çalıştır.
 
+## Otomatik yayınlama
+
+`.github/workflows/deploy.yml`, `main` dalına her push sonrasında birim testlerini çalıştırır, Vercel üretim çıktısını GitHub Actions içinde oluşturur ve `--prebuilt` ile yayınlar. Actions sayfasındaki **Run workflow** düğmesiyle de `main` için çalıştırılabilir. Yayın adresi çalışmanın özetinde görünür.
+
+Vercel'in GitHub entegrasyonunu kurmak veya GitHub hesabına erişim vermek gerekmez. [Vercel'in resmi GitHub Actions akışı](https://vercel.com/kb/guide/how-can-i-use-github-actions-with-vercel) kullanılır. İlk kurulum için [bu deponun Actions secrets ayarlarına](https://github.com/ytkimirti/caz-atlas/settings/secrets/actions) üç repository secret ekle:
+
+- `VERCEL_TOKEN`: [Vercel token sayfasından](https://vercel.com/account/tokens) oluşturulan, projenin bulunduğu takıma erişebilen ayrı bir yayınlama token'ı.
+- `VERCEL_ORG_ID`: doğru projeye bağlı yerel `.vercel/project.json` dosyasındaki `orgId`.
+- `VERCEL_PROJECT_ID`: aynı dosyadaki `projectId`.
+
+Projeyi bağlamak gerekirse doğru Vercel hesabıyla `vercel link` çalıştır ve hedef projeyi seç. Token'ı kaynak koda veya sohbet mesajına ekleme. Token süresi dolduğunda repository secret'ı yenile. Secret'lar eksikse workflow açıklayıcı bir hatayla durur. Workflow dosyası GitHub'a push edilmeden otomatik yayınlama etkinleşmez.
+
 ## Kullanım
 
 - Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca seçilen tarihlerde konser kaydı bulunan tüm isimler görünür.
