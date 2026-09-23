@@ -59,6 +59,17 @@ export function InspectorShell({
     panel.current?.querySelector<HTMLElement>("h2")?.focus({
       preventScroll: true,
     });
+  // Closing the panel from inside it would drop focus to the page; the map
+  // is where the reader continues.
+  useLayoutEffect(() => {
+    const root = panel.current;
+    return () => {
+      if (root?.contains(document.activeElement))
+        document
+          .querySelector<HTMLElement>(".network-canvas")
+          ?.focus({ preventScroll: true });
+    };
+  }, []);
   useLayoutEffect(() => {
     body.current?.scrollTo({ top: 0 });
     if (!keyboardOpen.current) return;

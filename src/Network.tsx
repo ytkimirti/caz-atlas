@@ -1631,6 +1631,16 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           h: lines.length * size * 1.15 + size * 0.2,
         }),
       );
+      // A label that left the map (dates changed under a resting pointer)
+      // stops counting as hovered.
+      if (
+        hoverRegion !== null &&
+        !regionHits.some((region) => region.id === hoverRegion)
+      ) {
+        hoverRegion = null;
+        state.current.onHoverEnsemble(null);
+        if (hoverId === null) canvas.style.cursor = "grab";
+      }
       // A previewed group glows under its markers, so its place on the map
       // reads at a glance. Off screen, a pointer at the edge leads to it.
       const haloIds = groupMembers.size
