@@ -706,7 +706,6 @@ function AtlasApp({
   }, [loadProjects, projects, projectAttempt]);
   useEffect(() => {
     setHoveredId(null);
-    setMapEnsembleId(null);
   }, [graph]);
   useEffect(() => {
     setPreviewEnsembleId(null);

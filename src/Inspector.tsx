@@ -52,14 +52,32 @@ export function InspectorShell({
   const panel = useRef<HTMLElement>(null);
   const keyboardOpen = useRef(false);
   // A row opened from the keyboard is replaced by the new body; land on its title.
-  useLayoutEffect(() => {
-    if (!keyboardOpen.current) return;
-    keyboardOpen.current = false;
-    if (panel.current?.contains(document.activeElement)) return;
+  const body = useRef<HTMLDivElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  const forwardButton = useRef<HTMLButtonElement>(null);
+  const focusTitle = () =>
     panel.current?.querySelector<HTMLElement>("h2")?.focus({
       preventScroll: true,
     });
+  useLayoutEffect(() => {
+    body.current?.scrollTo({ top: 0 });
+    if (!keyboardOpen.current) return;
+    keyboardOpen.current = false;
+    if (!panel.current?.contains(document.activeElement)) focusTitle();
   }, [contentKey]);
+  // Reaching either end disables the arrow that was pressed; hand focus over.
+  useLayoutEffect(() => {
+    const focused = document.activeElement;
+    if (focused !== backButton.current && focused !== forwardButton.current)
+      return;
+    if (!(focused as HTMLButtonElement).disabled) return;
+    const other =
+      focused === backButton.current
+        ? forwardButton.current
+        : backButton.current;
+    if (other && !other.disabled) other.focus();
+    else focusTitle();
+  }, [nav.canGoBack, nav.canGoForward]);
   return (
     <section
       ref={panel}
@@ -74,6 +92,7 @@ export function InspectorShell({
       <div className="inspector-bar">
         <div className="inspector-nav">
           <button
+            ref={backButton}
             className="icon-button"
             aria-label={`Geri: ${nav.backLabel}`}
             title={`Geri: ${nav.backLabel}`}
@@ -83,6 +102,7 @@ export function InspectorShell({
             <ChevronLeft size={17} />
           </button>
           <button
+            ref={forwardButton}
             className="icon-button"
             aria-label={`İleri: ${nav.forwardLabel}`}
             title={`İleri: ${nav.forwardLabel}`}
@@ -102,7 +122,9 @@ export function InspectorShell({
           <X size={16} />
         </button>
       </div>
-      <div className="inspector-body">{children}</div>
+      <div className="inspector-body" ref={body}>
+        {children}
+      </div>
     </section>
   );
 }
