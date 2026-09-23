@@ -773,9 +773,6 @@ function AtlasApp({
         edges={edges}
         counts={counts}
         ensembles={ensembles}
-        ensembleEdges={
-          allDates ? (venue?.edges ?? concerts.edges) : windowed.edges
-        }
         showEnsembles={showEnsembles}
         selected={selected}
         hovered={hovered}

@@ -15,7 +15,8 @@ import { project3D, sceneBounds } from "./projection";
 import type { Point3D } from "./projection";
 import { groupInfo, groups } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
-import { clusterBounds, ensembleClusters } from "./ensembles";
+import { findRegions, shortName, wrapName } from "./regions";
+import type { Region } from "./regions";
 import { LivePhysicsClient } from "./live-physics-client";
 
 export interface NetworkHandle {
@@ -31,7 +32,6 @@ interface Props {
   edges: Edge[];
   counts: Record<string, number>;
   ensembles: Ensemble[];
-  ensembleEdges: Edge[];
   showEnsembles: boolean;
   selected: number | null;
   hovered: number | null;
@@ -62,9 +62,14 @@ const EDGE_STYLE = [
   { far: [0.18, 0.7], near: [0.4, 1], rgb: "132, 146, 130" },
   { far: [0.3, 0.9], near: [0.5, 1.2], rgb: "96, 124, 106" },
 ];
+// Screen radius below which a named shape is too small to label.
+const REGION_MIN_RADIUS = 18;
 // Screen length in pixels beyond which a tie is drawn at reduced opacity.
 const LONG_EDGE = 180;
 const LONG_EDGE_ALPHA = 0.25;
+// Ties crossing most of the screen say little about the groups they cross.
+const SPANNING_EDGE = 600;
+const SPANNING_EDGE_ALPHA = 0.1;
 const edgeStyles = new Map<number, { color: string; width: number }>();
 function edgeStyle(tier: number, zoom: number) {
   // Quantized so a zoom gesture reuses a handful of style strings.
@@ -168,21 +173,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         .sort((a, b) => priority(a.id) - priority(b.id)),
     ];
   }, [props.layoutData, props.selected, emphasis, connectionStrengths]);
-  const clusters = useMemo(
-    () =>
-      ensembleClusters(
-        props.ensembles,
-        props.ensembleEdges,
-        new Set(props.data.nodes.map((n) => n.id)),
-      ),
-    [props.ensembles, props.ensembleEdges, props.data],
-  );
   const derived = {
     ...props,
     neighbors,
     connectionStrengths,
     edgesByKey,
-    clusters,
     visible,
     byId,
     visibleEdges,
@@ -703,6 +698,63 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     const panelChanges = new MutationObserver(observePanels);
     panelChanges.observe(panelRoot, { childList: true });
     observePanels();
+    // Named shapes on the map, found from settled positions. Recomputed after
+    // the layout, the visible graph or the ensemble list changes.
+    let regions: (Region & { label: string; index: Int32Array })[] = [];
+    let regionSource: {
+      data: GraphData;
+      ensembles: Ensemble[];
+      stamp: number;
+    } | null = null;
+    let regionStamp = 0,
+      regionStampAt = 0,
+      regionTimer = 0,
+      regionCost = 0;
+    function refreshRegions() {
+      const s = state.current;
+      if (
+        regionTimer ||
+        (regionSource?.data === s.data &&
+          regionSource.ensembles === s.ensembles &&
+          regionSource.stamp === regionStamp)
+      )
+        return;
+      // Scrubbing the timeline or live playback keeps the previous names for
+      // a moment, so detection stays a small share of the frame budget.
+      regionTimer = window.setTimeout(
+        () => {
+          regionTimer = 0;
+          if (disposed) return;
+          const s = state.current;
+          const started = performance.now();
+          const points = [];
+          for (const n of s.data.nodes) {
+            const p = positions.get(n.id);
+            if (p) points.push({ id: n.id, x: p.x, y: p.y, z: p.z ?? 0 });
+          }
+          regionSource = {
+            data: s.data,
+            ensembles: s.ensembles,
+            stamp: regionStamp,
+          };
+          regions = findRegions(points, s.ensembles, s.data.edges).map(
+            (region) => ({
+              ...region,
+              label: shortName(region.name),
+              index: Int32Array.from(
+                region.members.flatMap((id) => {
+                  const i = nodeIndex.get(id);
+                  return i === undefined ? [] : [i];
+                }),
+              ),
+            }),
+          );
+          regionCost = performance.now() - started;
+          invalidateFrame();
+        },
+        regions.length ? Math.max(300, regionCost * 20) : 0,
+      );
+    }
     let worker: Worker | null = null;
     let generation = 0;
     function startLayout() {
@@ -755,6 +807,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         for (const node of result)
           positions.set(node.id, { x: node.x, y: node.y, z: node.z });
         previousPositions.current = new Map(positions);
+        regionStamp++;
         scene = sceneBounds(positions.values());
         pivot = { ...scene.center };
         updateProjection();
@@ -1065,6 +1118,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         invalidateFrame();
       }
       physicsRunning = running;
+      if (running && now - regionStampAt > 2500) {
+        regionStamp++;
+        regionStampAt = now;
+      }
       canvas.dataset.physics = physics
         ? running
           ? "running"
@@ -1153,7 +1210,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const {
         neighbors,
         edgesByKey,
-        clusters,
         visible,
         visibleEdges,
         byId,
@@ -1237,13 +1293,15 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         // Settled graph: index-based segments, one stroke per weight tier.
         // Screen-spanning ties are dimmed so they do not veil the groups.
         const { a, b, offsets } = edgeArrays(s.edges);
-        const long = LONG_EDGE * LONG_EDGE;
+        const long = LONG_EDGE * LONG_EDGE,
+          spanning = SPANNING_EDGE * SPANNING_EDGE;
         for (let tier = 0; tier < EDGE_TIERS; tier++) {
           const from = offsets[tier],
             to = offsets[tier + 1];
           if (from === to) continue;
           setEdgeStyle(tier, zoom);
-          const far = new Path2D();
+          const far = new Path2D(),
+            across = new Path2D();
           ctx.beginPath();
           for (let k = from; k < to; k++) {
             const i = a[k],
@@ -1266,8 +1324,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             const length = dx * dx + dy * dy;
             if (length < 1) continue;
             if (length > long) {
-              far.moveTo(ax, ay);
-              far.lineTo(bx, by);
+              const path = length > spanning ? across : far;
+              path.moveTo(ax, ay);
+              path.lineTo(bx, by);
               continue;
             }
             ctx.moveTo(ax, ay);
@@ -1276,6 +1335,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.stroke();
           ctx.globalAlpha = LONG_EDGE_ALPHA;
           ctx.stroke(far);
+          ctx.globalAlpha = SPANNING_EDGE_ALPHA;
+          ctx.stroke(across);
           ctx.globalAlpha = 1;
         }
       } else {
@@ -1345,6 +1406,156 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               projected.get(a.id)!.depth - projected.get(b.id)!.depth,
           )
         : s.drawOrder;
+      const regionBoxes: { x: number; y: number; w: number; h: number }[] = [];
+      const namedRegions: {
+        lines: string[];
+        x: number;
+        y: number;
+        w: number;
+        size: number;
+        alpha: number;
+        cx: number;
+        cy: number;
+        r: number;
+        members: number;
+      }[] = [];
+      const visibleEnsembles: string[] = [];
+      if (s.showEnsembles) {
+        refreshRegions();
+        const viewport = focusViewport();
+        const side = Math.min(width, height);
+        const candidates: {
+          region: (typeof regions)[number];
+          x: number;
+          y: number;
+          r: number;
+        }[] = [];
+        for (const region of regions) {
+          let sx = 0,
+            sy = 0,
+            count = 0;
+          for (const i of region.index) {
+            if (!visible.has(nodes[i].id)) continue;
+            sx += projX[i];
+            sy += projY[i];
+            count++;
+          }
+          if (count < 3) continue;
+          const x = (sx / count) * zoom + panX,
+            y = (sy / count) * zoom + panY;
+          if (
+            x < viewport.left ||
+            x > viewport.right ||
+            y < viewport.top ||
+            y > viewport.bottom
+          )
+            continue;
+          let r = 0;
+          for (const i of region.index)
+            if (visible.has(nodes[i].id))
+              r = Math.max(
+                r,
+                Math.hypot(
+                  projX[i] * zoom + panX - x,
+                  projY[i] * zoom + panY - y,
+                ),
+              );
+          if (r < REGION_MIN_RADIUS) continue;
+          if (
+            spatial &&
+            focus !== null &&
+            !region.members.some((id) => connected.has(id))
+          )
+            continue;
+          candidates.push({ region, x, y, r });
+        }
+        // The largest shapes on screen are named first, like countries on a
+        // map; smaller ensembles appear as zooming makes room for them.
+        candidates.sort((a, b) => b.r - a.r);
+        for (const { region, x, y, r } of candidates) {
+          // 3D projections stack shapes on top of each other; fewer names read.
+          if (visibleEnsembles.length >= (width > 700 && !spatial ? 14 : 6))
+            break;
+          // Fade in as the shape grows, out once it fills the screen.
+          const fade =
+            Math.min(1, (r - REGION_MIN_RADIUS) / 6) *
+            Math.max(0, Math.min(1, (0.85 * side - r) / (0.35 * side)));
+          if (fade < 0.05) continue;
+          const size = Math.round(Math.max(11, Math.min(30, 8 + r * 0.075)));
+          ctx.font = `600 ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+          const lines = wrapName(
+            region.label,
+            Math.max(110, Math.min(width - 60, r * 2.2, size * 16)),
+            (text) => ctx.measureText(text).width,
+          );
+          const lineHeight = size * 1.15;
+          const w =
+              Math.max(...lines.map((line) => ctx.measureText(line).width)) +
+              size * 0.6,
+            h = lines.length * lineHeight + size * 0.2;
+          // Shapes with room carry their name in the middle; small ones above
+          // or below, so the name never hides the few markers it describes.
+          const spots = [
+            ...(r >= 30 ? [{ x: x - w / 2, y: y - h / 2 }] : []),
+            { x: x - w / 2, y: y - r - h - 4 },
+            { x: x - w / 2, y: y + r + 4 },
+          ];
+          const spot = spots.find(
+            (c) =>
+              c.x >= viewport.left &&
+              c.x + w <= viewport.right &&
+              c.y >= viewport.top &&
+              c.y + h <= viewport.bottom &&
+              !regionBoxes.some(
+                (b) =>
+                  c.x < b.x + b.w &&
+                  c.x + w > b.x &&
+                  c.y < b.y + b.h &&
+                  c.y + h > b.y,
+              ),
+          );
+          if (!spot) continue;
+          regionBoxes.push({
+            x: spot.x - 4,
+            y: spot.y - 4,
+            w: w + 8,
+            h: h + 8,
+          });
+          namedRegions.push({
+            lines,
+            ...spot,
+            w,
+            size,
+            alpha: fade * (focus === null ? 1 : 0.5),
+            cx: x,
+            cy: y,
+            r,
+            members: region.index.length,
+          });
+          visibleEnsembles.push(region.name);
+        }
+        // A faint wash under each named shape shows where it begins and ends.
+        for (const { cx, cy, r, alpha, members } of namedRegions) {
+          if (r < 30 || members < 8) continue;
+          const wash = ctx.createRadialGradient(
+            cx,
+            cy,
+            r * 0.3,
+            cx,
+            cy,
+            r * 1.15,
+          );
+          wash.addColorStop(0, "rgba(40, 100, 77, 0.07)");
+          wash.addColorStop(0.75, "rgba(40, 100, 77, 0.05)");
+          wash.addColorStop(1, "rgba(40, 100, 77, 0)");
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = wash;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r * 1.15, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
       // Unemphasized, fully faded-in markers share one fill per color.
       // Tiny ones become squares of equal area, which rasterize faster.
       plain.fill(0);
@@ -1478,6 +1689,26 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       ctx.globalAlpha = 1;
       const occupied: { x: number; y: number; w: number; h: number }[] = [];
+      // Group names sit above the markers; only musician boxes cover them.
+      if (namedRegions.length) {
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "rgba(250, 250, 246, 0.92)";
+        ctx.fillStyle = "#2c4a3b";
+        for (const { lines, x, y, w, size, alpha } of namedRegions) {
+          ctx.globalAlpha = alpha;
+          ctx.font = `600 ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+          ctx.lineWidth = Math.max(3, size * 0.32);
+          lines.forEach((line, k) => {
+            const ly = y + size * 0.1 + size * 1.15 * (k + 0.5);
+            ctx.strokeText(line, x + w / 2, ly);
+            ctx.fillText(line, x + w / 2, ly);
+          });
+        }
+        ctx.globalAlpha = 1;
+        ctx.textBaseline = "alphabetic";
+      }
       // Give the active people first choice of space, then their strongest ties.
       // Selecting a hub must share the same finite budget as every other view.
       const collaborators =
@@ -1564,12 +1795,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.lineWidth = 0.8;
           ctx.stroke();
         }
-        if (
-          occupied.some(
-            (b) =>
-              x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + 18 > b.y,
-          )
-        )
+        const overlaps = (b: (typeof occupied)[number]) =>
+          x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + 18 > b.y;
+        // Group names outrank everyone but the active people.
+        if (occupied.some(overlaps) || (!special && regionBoxes.some(overlaps)))
           continue;
         occupied.push({ x: x - 5, y: y - 5, w: w + 10, h: 28 });
         ctx.fillStyle = special ? "#fafaf6" : "#fafaf6ed";
@@ -1596,122 +1825,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       );
       canvas.dataset.visibleNodes = String(s.data.nodes.length);
       canvas.dataset.musicianLabels = JSON.stringify(visibleLabels);
-      const visibleEnsembles: string[] = [];
-      if (s.showEnsembles) {
-        const labeledMembers = new Set<number>();
-        // Marker centers bucketed into an on-screen grid on the first query.
-        // Boxes are checked exactly against the marker radius plus padding.
-        const CELL = 32,
-          REACH = 30;
-        const cols = Math.ceil(width / CELL) + 1,
-          rows = Math.ceil(height / CELL) + 1;
-        let cellStart: Int32Array | null = null,
-          cellItems: Int32Array | null = null;
-        const buildGrid = () => {
-          const data = s.data.nodes;
-          const cellOf = new Int32Array(data.length).fill(-1);
-          const start = new Int32Array(cols * rows + 1);
-          data.forEach((node, k) => {
-            const i = nodeIndex.get(node.id);
-            if (i === undefined) return;
-            const x = projX[i] * zoom + panX,
-              y = projY[i] * zoom + panY;
-            if (
-              x < -REACH ||
-              y < -REACH ||
-              x > width + REACH ||
-              y > height + REACH
-            )
-              return;
-            const c =
-              Math.max(0, Math.min(rows - 1, Math.floor(y / CELL))) * cols +
-              Math.max(0, Math.min(cols - 1, Math.floor(x / CELL)));
-            cellOf[k] = c;
-            start[c + 1]++;
-          });
-          for (let c = 0; c < cols * rows; c++) start[c + 1] += start[c];
-          const fill = start.slice(0, cols * rows);
-          const items = new Int32Array(start[cols * rows]);
-          cellOf.forEach((c, k) => {
-            if (c >= 0) items[fill[c]++] = k;
-          });
-          cellStart = start;
-          cellItems = items;
-        };
-        const markersNear = (x: number, y: number, w: number, h: number) => {
-          if (!cellStart) buildGrid();
-          const data = s.data.nodes;
-          const x0 = Math.max(0, Math.floor((x - REACH) / CELL)),
-            x1 = Math.min(cols - 1, Math.floor((x + w + REACH) / CELL)),
-            y0 = Math.max(0, Math.floor((y - REACH) / CELL)),
-            y1 = Math.min(rows - 1, Math.floor((y + h + REACH) / CELL));
-          for (let cy = y0; cy <= y1; cy++)
-            for (let cx = x0; cx <= x1; cx++) {
-              const c = cy * cols + cx;
-              for (let k = cellStart![c]; k < cellStart![c + 1]; k++) {
-                const id = data[cellItems![k]].id;
-                const p = point(id),
-                  r = markerRadius(id) + 7;
-                if (
-                  x < p.x + r &&
-                  x + w > p.x - r &&
-                  y < p.y + r &&
-                  y + h > p.y - r
-                )
-                  return true;
-              }
-            }
-          return false;
-        };
-        for (const { ensemble, members } of clusters) {
-          if (
-            spatial &&
-            focus !== null &&
-            !members.some((id) => connected.has(id))
-          )
-            continue;
-          if (visibleEnsembles.length >= (width > 700 ? 2 : 1)) break;
-          if (members.some((id) => labeledMembers.has(id))) continue;
-          const bounds = clusterBounds(members, point, width, height);
-          if (!bounds) continue;
-          ctx.font =
-            '500 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-          let name = ensemble.name;
-          const maxWidth = Math.min(160, width - 60);
-          while (ctx.measureText(name).width > maxWidth && name.length > 1)
-            name = name.slice(0, -2).trimEnd() + "…";
-          const w = ctx.measureText(name).width + 8,
-            h = 16;
-          const centerX = (bounds.left + bounds.right) / 2;
-          const spots = [
-            { x: centerX - w / 2, y: bounds.top - 28 },
-            { x: centerX - w / 2, y: bounds.bottom + 30 },
-          ];
-          // Skip crowded hints instead of displacing them away from the group.
-          const best = spots.find(
-            ({ x, y }) =>
-              x >= 8 &&
-              x + w <= width - 8 &&
-              y >= 90 &&
-              y + h <= height - 75 &&
-              !occupied.some(
-                (b) =>
-                  x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y,
-              ) &&
-              !markersNear(x, y, w, h),
-          );
-          if (!best) continue;
-          const { x, y } = best;
-          occupied.push({ x: x - 6, y: y - 6, w: w + 12, h: h + 12 });
-          ctx.fillStyle = "#fafaf6ed";
-          ctx.fillRect(x, y, w, h);
-          ctx.textAlign = "center";
-          ctx.fillStyle = "#7b876e";
-          ctx.fillText(name, x + w / 2, y + 11);
-          visibleEnsembles.push(ensemble.name);
-          members.forEach((id) => labeledMembers.add(id));
-        }
-      }
       canvas.dataset.ensembles = JSON.stringify(visibleEnsembles);
       // Expose the rendered state for interaction checks.
       canvas.dataset.visibleEdges = String(s.edges.length);
@@ -1737,6 +1850,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       physics?.dispose();
       document.removeEventListener("visibilitychange", invalidateFrame);
       cancelAnimationFrame(frame);
+      clearTimeout(regionTimer);
       observer.disconnect();
       panels.disconnect();
       panelChanges.disconnect();
