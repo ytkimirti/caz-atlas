@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { computeLayout, layoutLinks } from "../../src/layout";
-import {
-  DEFAULT_ENGINE,
-  layoutEngines,
-  parseEngine,
-  parseSpacing,
-} from "../../src/layout-options";
+import { parseSpacing } from "../../src/layout-options";
 import { shortestPath } from "../../src/graph";
 import type { Edge } from "../../src/types";
 
@@ -33,19 +28,18 @@ test("sparse layout retains weak bridges between dense communities", () => {
   expect(shortestPath(neighbors, 0, 15).length).toBeGreaterThan(0);
 });
 test("invalid URL settings recover to defaults", () => {
-  expect(parseEngine("unknown")).toBe(DEFAULT_ENGINE);
-  expect(parseEngine("ngraph")).toBe("ngraph");
   for (const value of [null, "NaN", "Infinity", "-1", "0", "99"])
     expect(parseSpacing(value)).toBe(1);
   expect(parseSpacing("1.6")).toBe(1.6);
 });
-for (const { id: engine } of layoutEngines) {
-  describe(engine, () => {
+// 3D placement is covered by spatial.test.ts; it has no marker clearance.
+for (const mode of ["2d"] as const) {
+  describe(mode, () => {
     test("finite, repeatable positions without mutating the graph", () => {
       const request = {
         nodes: structuredClone(nodes),
         edges: structuredClone(edges),
-        engine,
+        mode,
         spacing: 1,
       };
       const before = structuredClone(request);
@@ -64,14 +58,14 @@ for (const { id: engine } of layoutEngines) {
       }
     });
     test("empty, isolated and single-node graphs", () => {
-      expect(
-        computeLayout({ nodes: [], edges: [], engine, spacing: 1 }),
-      ).toEqual([]);
+      expect(computeLayout({ nodes: [], edges: [], mode, spacing: 1 })).toEqual(
+        [],
+      );
       for (const subset of [nodes.slice(0, 1), nodes]) {
         const positions = computeLayout({
           nodes: subset,
           edges: [],
-          engine,
+          mode,
           spacing: 1,
         });
         expect(positions.length).toBe(subset.length);
@@ -82,7 +76,7 @@ for (const { id: engine } of layoutEngines) {
     });
     test("more spacing increases clearance", () => {
       const minimum = (spacing: number) => {
-        const p = computeLayout({ nodes, edges, engine, spacing });
+        const p = computeLayout({ nodes, edges, mode, spacing });
         return Math.min(
           ...p.flatMap((a, i) =>
             p.slice(i + 1).map((b) => Math.hypot(a.x - b.x, a.y - b.y)),

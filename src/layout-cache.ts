@@ -1,7 +1,7 @@
 import type { LayoutRequest, Position } from "./layout";
 
 // Bump when layout output changes so shipped precomputed positions are ignored.
-export const LAYOUT_VERSION = 3;
+export const LAYOUT_VERSION = 4;
 
 // Cheap content signature of a layout request. Identical filters produce the
 // same nodes and edges in the same order, so returning to a view is instant.
@@ -22,7 +22,6 @@ export function layoutKey(request: LayoutRequest) {
   }
   return [
     LAYOUT_VERSION,
-    request.engine,
     request.mode ?? "2d",
     request.spacing,
     request.resolution ?? 1.5,

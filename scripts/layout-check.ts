@@ -11,42 +11,42 @@ page.on("pageerror", (error) => errors.push(error.message));
 const canvas = page.locator("canvas");
 const ready = () =>
   expect(canvas).toHaveAttribute("data-layout", "ready", { timeout: 60000 });
+const option = (group: string, name: string) =>
+  page.getByRole("group", { name: group }).getByRole("button", { name });
 try {
   for (const min of ["10", "all"]) {
-    for (const engine of ["communities", "forceatlas2", "d3", "ngraph"]) {
-      const started = performance.now();
-      await page.goto(`${base}?engine=${engine}&min=${min}`);
-      await ready();
-      await expect(canvas).toHaveAttribute("data-engine", engine);
-      console.log(
-        JSON.stringify({
-          min,
-          engine,
-          readyMs: Math.round(performance.now() - started),
-        }),
-      );
-      await page.screenshot({ path: `.cache/layout-${min}-${engine}.png` });
-    }
+    const started = performance.now();
+    await page.goto(`${base}?min=${min}`);
+    await ready();
+    console.log(
+      JSON.stringify({ min, readyMs: Math.round(performance.now() - started) }),
+    );
+    await page.screenshot({ path: `.cache/layout-${min}.png` });
   }
   // A replacement worker wins even when the previous graph is still computing.
-  await page.goto(`${base}?min=all&engine=forceatlas2`);
-  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  const selector = page.getByLabel("Yerleşim", { exact: true });
-  await selector.selectOption("d3");
-  await selector.selectOption("ngraph");
+  await page.goto(`${base}?min=10`);
   await ready();
-  await expect(canvas).toHaveAttribute("data-engine", "ngraph");
-  await expect(page).toHaveURL(/engine=ngraph/);
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
+  await option("Gruplama", "Ayrıntılı").click();
+  await option("Gruplama", "Geniş").click();
+  await ready();
+  await expect(page).toHaveURL(/resolution=0\.8/);
   await page.reload();
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(selector).toHaveValue("ngraph");
-  // Invalid URL values recover without sending bad parameters to the worker.
-  await page.goto(`${base}?engine=invalid&spacing=NaN`);
+  await expect(option("Gruplama", "Geniş")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // Invalid and retired URL values recover without reaching the worker.
+  await page.goto(`${base}?engine=d3&spacing=NaN`);
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(selector).toHaveValue("communities");
-  await expect(page.getByLabel("Aralık", { exact: true })).toHaveValue("1");
+  await expect(option("Aralık", "Dengeli")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page).not.toHaveURL(/engine=/);
   // Worker failures leave a usable graph and a visible recovery instruction.
   await page.addInitScript(() => {
     window.Worker = class extends EventTarget {
@@ -67,7 +67,7 @@ try {
   await page.keyboard.press("+");
   expect(errors).toEqual([]);
   console.log(
-    "Layout checks passed: engines, full archive, cancellation, URL restore, invalid settings, worker fallback.",
+    "Layout checks passed: full archive, cancellation, URL restore, invalid settings, worker fallback.",
   );
 } finally {
   await browser.close();

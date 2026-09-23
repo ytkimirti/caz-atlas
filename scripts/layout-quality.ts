@@ -1,10 +1,9 @@
 // Read-only layout feedback: timing, readability metrics and a rendered PNG.
-// Usage: bun run scripts/layout-quality.ts [--min=N] [--engine=communities]
+// Usage: bun run scripts/layout-quality.ts [--min=N]
 //   [--resolution=1.5] [--spacing=1] [--png=.cache/quality.png] [--no-png]
 import { mkdir } from "node:fs/promises";
 import { computeLayout } from "../src/layout";
 import type { Position } from "../src/layout";
-import { parseEngine } from "../src/layout-options";
 import { filterGraph, topCollaboratorEdges } from "../src/graph";
 import { groupInfo } from "../src/types";
 import type { Atlas, ConcertIndex } from "../src/types";
@@ -28,12 +27,10 @@ const nodes = graph.nodes.map((n) => ({
   id: n.id,
   count: concerts.counts[n.id] ?? 0,
 }));
-const engine = parseEngine(arg("engine") ?? "communities");
 const started = performance.now();
 const positions = computeLayout({
   nodes,
   edges: graph.edges,
-  engine,
   spacing: Number(arg("spacing") ?? 1),
   resolution: Number(arg("resolution") ?? 1.5),
 });
@@ -171,11 +168,11 @@ function layoutMetrics(
 }
 
 const metrics = layoutMetrics(positions, graph.edges, concerts.counts);
-console.log(JSON.stringify({ engine, min, ms, ...metrics }));
+console.log(JSON.stringify({ min, ms, ...metrics }));
 
 if (!process.argv.includes("--no-png")) {
   const { chromium } = await import("@playwright/test");
-  const path = arg("png") ?? `.cache/quality-${engine}-${min ?? "all"}.png`;
+  const path = arg("png") ?? `.cache/quality-${min ?? "all"}.png`;
   await mkdir(new URL("../.cache", import.meta.url), { recursive: true });
   const byPosition = new Map(positions.map((p) => [p.id, p]));
   const group = new Map(atlas.nodes.map((n) => [n.id, n.group]));

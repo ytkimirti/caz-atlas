@@ -222,14 +222,14 @@ try {
   );
   await expect(canvas).toHaveAttribute("data-physics", "running");
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(page.locator("#layout-engine")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Gruplama" })).toHaveCount(0);
   await page
     .getByRole("button", { name: "Görünümü kapat", exact: true })
     .click();
   await page.getByRole("button", { name: "Keşfet modu", exact: true }).click();
   await expect(canvas).toHaveAttribute("data-physics", "off");
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(page.locator("#layout-engine")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Gruplama" })).toBeVisible();
   await page
     .getByRole("button", { name: "Görünümü kapat", exact: true })
     .click();

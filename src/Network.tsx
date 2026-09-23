@@ -6,7 +6,7 @@ import {
   useRef,
 } from "react";
 import type { GraphData, Edge, Ensemble } from "./types";
-import type { LayoutEngine, LayoutStatus, ViewMode } from "./layout-options";
+import type { LayoutStatus, ViewMode } from "./layout-options";
 import type { LayoutRequest, LayoutResponse, Position } from "./layout";
 import { cacheLayout, cachedLayout, layoutKey } from "./layout-cache";
 import { expandPlaybackView, frameNeighborhood, orbitRadius } from "./camera";
@@ -24,6 +24,8 @@ export interface NetworkHandle {
   fit: () => void;
   zoom: (factor: number) => void;
   focus: (id: number) => void;
+  /** Re-frame the camera on `frameIds`. */
+  frameGroup: () => void;
 }
 interface Props {
   data: GraphData;
@@ -38,8 +40,12 @@ interface Props {
   path: number[];
   labels: boolean;
   instrument: string;
+  /** Members drawn with a halo and rings: a previewed or selected group. */
   highlightedIds: number[];
-  engine: LayoutEngine;
+  /** Name of the highlighted group, shown when it lies off screen. */
+  highlightLabel: string | null;
+  /** Members the camera frames whenever this list changes. */
+  frameIds: number[];
   mode: ViewMode;
   spacing: number;
   resolution: number;
@@ -47,6 +53,8 @@ interface Props {
   onLayoutStatus: (status: LayoutStatus) => void;
   onSelect: (id: number | null) => void;
   onHover: (id: number | null) => void;
+  onSelectEnsemble: (id: string) => void;
+  onHoverEnsemble: (id: string | null) => void;
 }
 
 // Ties by shared concerts: one, two or three, four to nine, ten or more.
@@ -190,6 +198,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     fit() {},
     zoom() {},
     focus() {},
+    frameGroup() {},
     retryLayout() {},
   });
   const invalidate = useRef(() => {});
@@ -200,6 +209,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       retryLayout: () => api.current.retryLayout(),
       zoom: (factor) => api.current.zoom(factor),
       focus: (id) => api.current.focus(id),
+      frameGroup: () => api.current.frameGroup(),
     }),
     [],
   );
@@ -212,6 +222,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       props.labels,
       props.instrument,
       props.highlightedIds,
+      props.highlightLabel,
+      props.frameIds,
       props.edges,
       props.data,
       props.counts,
@@ -343,6 +355,16 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       duration: number;
     } | null = null;
     let hoverId: number | null = null;
+    // Named map regions from the last frame; their names open the group.
+    let regionHits: {
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      members: number[];
+    }[] = [];
+    let hoverRegion: string | null = null;
     const pointers = new Map<number, { x: number; y: number }>();
     let startX = 0,
       startY = 0,
@@ -419,7 +441,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         minY = Infinity,
         maxX = -Infinity,
         maxY = -Infinity;
-      const roster = new Set(state.current.highlightedIds);
+      const roster = new Set(state.current.frameIds);
       const activeIds = props.livePhysics
         ? new Set(state.current.data.nodes.map((node) => node.id))
         : null;
@@ -428,6 +450,21 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           (!roster.size || roster.has(id)) && (!activeIds || activeIds.has(id)),
       );
       if (!rosterPoints.length) return;
+      if (roster.size > 2) {
+        // Drop strays far from the roster's center so the core fills the view.
+        const mid = (values: number[]) =>
+          [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+        const cx = mid(rosterPoints.map(([, p]) => p.x)),
+          cy = mid(rosterPoints.map(([, p]) => p.y));
+        const reach =
+          mid(rosterPoints.map(([, p]) => Math.hypot(p.x - cx, p.y - cy))) * 3;
+        if (reach > 0) {
+          const core = rosterPoints.filter(
+            ([, p]) => Math.hypot(p.x - cx, p.y - cy) <= reach,
+          );
+          if (core.length >= 2) rosterPoints.splice(0, Infinity, ...core);
+        }
+      }
       const points =
         spatial && targetPivot
           ? rosterPoints.map(([, p]) =>
@@ -508,13 +545,18 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ".layout-controls",
         ".filter-panel",
         ".selection-panel",
-        ".instrument-explorer",
+        ".instrument-legend",
       ]) {
         const element =
           canvas.parentElement?.querySelector<HTMLElement>(selector);
         if (!element || !element.getClientRects().length) continue;
         const box = element.getBoundingClientRect();
-        if (width > 700) {
+        if (selector === ".instrument-legend") {
+          viewport.bottom = Math.min(
+            viewport.bottom,
+            box.top - canvasBounds.top - 12,
+          );
+        } else if (width > 700) {
           if (box.left < width / 2)
             viewport.left = Math.max(
               viewport.left,
@@ -525,11 +567,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               viewport.right,
               box.left - canvasBounds.left - 24,
             );
-        } else if (selector === ".instrument-explorer") {
-          viewport.top = Math.max(
-            viewport.top,
-            box.bottom - canvasBounds.top + 12,
-          );
         } else if (selector === ".selection-panel") {
           viewport.bottom = Math.min(
             viewport.bottom,
@@ -603,6 +640,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function clearHover() {
       hoverId = null;
       state.current.onHover(null);
+      if (hoverRegion !== null) {
+        hoverRegion = null;
+        state.current.onHoverEnsemble(null);
+      }
       canvas.style.cursor = "grab";
       invalidateFrame();
     }
@@ -647,6 +688,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         );
         clearHover();
       },
+      frameGroup() {
+        if (!state.current.frameIds.length) return;
+        stopMovement();
+        clearHover();
+        updateProjection();
+        fit(true, scene.center);
+      },
       focus(id) {
         if (spatial) {
           focusNeighborhood(id);
@@ -678,7 +726,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     const panels = new ResizeObserver(invalidateViewport);
     const panelRoot = canvas.parentElement!;
     const panelSelector =
-      ".selection-panel, .instrument-explorer, .timeline, .filter-panel, .layout-controls";
+      ".selection-panel, .instrument-legend, .timeline, .filter-panel, .layout-controls";
     function observePanels() {
       panels.disconnect();
       for (const panel of panelRoot.querySelectorAll(panelSelector))
@@ -766,7 +814,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         canvas.setAttribute("aria-busy", String(status === "pending"));
         state.current.onLayoutStatus(status);
       };
-      canvas.dataset.engine = spatial ? "ngraph" : props.engine;
       if (props.livePhysics) {
         setStatus("ready");
         physics?.dispose();
@@ -797,7 +844,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           count: props.layoutCounts[n.id] || 0,
         })),
         edges: props.layoutData.edges,
-        engine: props.engine,
         mode: props.mode,
         spacing: props.spacing,
         resolution: props.resolution,
@@ -893,6 +939,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const bounds = canvas.getBoundingClientRect();
       return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
     }
+    function regionAt(x: number, y: number) {
+      return (
+        regionHits.find(
+          (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+        )?.id ?? null
+      );
+    }
     function updateHover(x: number, y: number) {
       const id = hit(x, y);
       if (id !== hoverId) {
@@ -900,7 +953,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         state.current.onHover(id);
         invalidateFrame();
       }
-      canvas.style.cursor = id === null ? "grab" : "pointer";
+      const region = id === null ? regionAt(x, y) : null;
+      if (region !== hoverRegion) {
+        hoverRegion = region;
+        state.current.onHoverEnsemble(region);
+        invalidateFrame();
+      }
+      canvas.style.cursor = id === null && region === null ? "grab" : "pointer";
     }
     function down(event: PointerEvent) {
       if (event.button !== 0) return;
@@ -972,9 +1031,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const p = local(event);
       if (!moved && !pinched && pointers.size === 1) {
         const id = hit(p.x, p.y);
+        const region = id === null ? regionAt(p.x, p.y) : null;
         if (spatial && id !== null && id === state.current.selected)
           focusNeighborhood(id);
-        state.current.onSelect(id);
+        if (region !== null) state.current.onSelectEnsemble(region);
+        else state.current.onSelect(id);
       }
       if (event.timeStamp - orbitTime > 80) yawVelocity = pitchVelocity = 0;
       pointers.delete(event.pointerId);
@@ -1134,7 +1195,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           .map((n) => ({ id: n.id, ...positions.get(n.id) })),
       );
       const nextViewportKey = JSON.stringify(focusViewport());
-      const nextRosterKey = state.current.highlightedIds.join(",");
+      const nextRosterKey = state.current.frameIds.join(",");
       if (
         selection !== state.current.selected ||
         viewportKey !== nextViewportKey ||
@@ -1408,6 +1469,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         : s.drawOrder;
       const regionBoxes: { x: number; y: number; w: number; h: number }[] = [];
       const namedRegions: {
+        id: string;
+        memberIds: number[];
         lines: string[];
         x: number;
         y: number;
@@ -1522,6 +1585,8 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             h: h + 8,
           });
           namedRegions.push({
+            id: region.id,
+            memberIds: region.members,
             lines,
             ...spot,
             w,
@@ -1555,6 +1620,67 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.fill();
         }
         ctx.globalAlpha = 1;
+      }
+      regionHits = namedRegions.map(
+        ({ id, memberIds, x, y, w, lines, size }) => ({
+          id,
+          members: memberIds,
+          x,
+          y,
+          w,
+          h: lines.length * size * 1.15 + size * 0.2,
+        }),
+      );
+      // A previewed group glows under its markers, so its place on the map
+      // reads at a glance. Off screen, a pointer at the edge leads to it.
+      const haloIds = groupMembers.size
+        ? groupMembers
+        : hoverRegion !== null
+          ? new Set(regionHits.find((r) => r.id === hoverRegion)?.members)
+          : null;
+      let haloRing: { x: number; y: number; r: number } | null = null;
+      if (haloIds?.size) {
+        const glow = Math.max(9, Math.min(26, 15 * Math.sqrt(zoom)));
+        const xs: number[] = [],
+          ys: number[] = [];
+        ctx.beginPath();
+        for (const id of haloIds) {
+          const p = visible.has(id) ? projected.get(id) : undefined;
+          if (!p) continue;
+          const x = p.x * zoom + panX,
+            y = p.y * zoom + panY;
+          xs.push(x);
+          ys.push(y);
+          ctx.moveTo(x + glow, y);
+          ctx.arc(x, y, glow, 0, Math.PI * 2);
+        }
+        ctx.fillStyle = "rgba(199, 141, 82, 0.22)";
+        ctx.fill();
+        if (xs.length) {
+          // A ring around the core of the roster; strays keep their glow.
+          const mid = (values: number[]) =>
+            [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+          const x = mid(xs),
+            y = mid(ys);
+          const distances = xs
+            .map((px, i) => Math.hypot(px - x, ys[i] - y))
+            .sort((a, b) => a - b);
+          const r =
+            Math.max(
+              distances[Math.floor((distances.length - 1) * 0.85)],
+              glow,
+            ) + 14;
+          haloRing = { x, y, r };
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(199, 141, 82, 0.07)";
+          ctx.fill();
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = "#c78d52";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
       }
       // Unemphasized, fully faded-in markers share one fill per color.
       // Tiny ones become squares of equal area, which rasterize faster.
@@ -1814,6 +1940,71 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         visibleLabels.push({ id, x, y, w, h: 18 });
       }
       ctx.globalAlpha = 1;
+      if (haloRing && s.highlightLabel) {
+        const v = focusViewport();
+        const inset = 36;
+        const offscreen =
+          haloRing.x < v.left + inset ||
+          haloRing.x > v.right - inset ||
+          haloRing.y < v.top + inset ||
+          haloRing.y > v.bottom - inset;
+        ctx.font = `600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+        const label =
+          s.highlightLabel.length > 32
+            ? s.highlightLabel.slice(0, 31) + "…"
+            : s.highlightLabel;
+        const cx = (v.left + v.right) / 2,
+          cy = (v.top + v.bottom) / 2;
+        const dx = haloRing.x - cx,
+          dy = haloRing.y - cy;
+        const w = ctx.measureText(label).width + (offscreen ? 40 : 22),
+          h = 26;
+        let x: number, y: number;
+        if (offscreen) {
+          const t = Math.min(
+            dx
+              ? Math.max(0, (v.right - v.left) / 2 - inset) / Math.abs(dx)
+              : Infinity,
+            dy
+              ? Math.max(0, (v.bottom - v.top) / 2 - inset) / Math.abs(dy)
+              : Infinity,
+          );
+          x = cx + dx * t - w / 2;
+          y = cy + dy * t - h / 2;
+        } else {
+          // Name the ring just above its top edge.
+          x = haloRing.x - w / 2;
+          y = haloRing.y - haloRing.r - h - 6;
+          if (y < v.top) y = haloRing.y + haloRing.r + 6;
+        }
+        x = Math.max(v.left, Math.min(v.right - w, x));
+        y = Math.max(v.top, Math.min(v.bottom - h, y));
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 13);
+        ctx.fillStyle = offscreen ? "#fff" : "#fdf7f0";
+        ctx.fill();
+        ctx.strokeStyle = "#c78d52";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        if (offscreen) {
+          ctx.save();
+          ctx.translate(x + 16, y + h / 2);
+          ctx.rotate(Math.atan2(dy, dx));
+          ctx.beginPath();
+          ctx.moveTo(6, 0);
+          ctx.lineTo(-4, -5);
+          ctx.lineTo(-4, 5);
+          ctx.closePath();
+          ctx.fillStyle = "#b5773f";
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.fillStyle = "#6b4520";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, x + (offscreen ? 29 : 11), y + h / 2 + 0.5);
+        ctx.textBaseline = "alphabetic";
+      }
       if (animating) invalidateFrame();
       canvas.dataset.animating = String(
         running ||
@@ -1869,7 +2060,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
   }, [
     props.layoutData,
     props.layoutCounts,
-    props.engine,
     props.mode,
     props.spacing,
     props.resolution,

@@ -44,6 +44,16 @@ const search = page.getByRole("combobox", {
 });
 const ready = () =>
   expect(canvas).toHaveAttribute("data-layout", "ready", { timeout: 45000 });
+const legend = (name: string) =>
+  page
+    .getByRole("navigation", { name: "Enstrüman renkleri" })
+    .getByRole("button", { name: new RegExp(`^${name}`) });
+const instrumentPanel = page.getByRole("region", {
+  name: "Vurgulanan enstrüman",
+});
+const collaboratorNames = page.locator(".collaborator-rows .row-name");
+const spacing = (name: string) =>
+  page.getByRole("group", { name: "Aralık" }).getByRole("button", { name });
 async function pressGraphKey(key: string) {
   await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
   await page.keyboard.press(key);
@@ -109,33 +119,24 @@ try {
   const timelineBounds = (await page.locator(".timeline").boundingBox())!;
   expect(timelineBounds.x).toBeGreaterThan(0);
   expect(timelineBounds.y + timelineBounds.height).toBeLessThan(982);
-  await expect(page.locator("nav")).toHaveCount(0);
+  await expect(page.locator("nav:not(.instrument-legend)")).toHaveCount(0);
   await expect(
     page.getByText(/Jam session|Plak koleksiyonu|Hikâyesi/),
   ).toHaveCount(0);
-  // The toolbar opens one settings panel at a time, and the guide highlights instruments.
+  // The toolbar opens one settings panel at a time; the legend toggles instruments.
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Sonuçları keşfet" }),
-  ).toBeVisible();
+  await expect(page.locator(".filter-panel")).toBeVisible();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await expect(page.locator(".filter-panel")).toHaveCount(0);
   await expect(
-    page.getByLabel("İsimleri göster", { exact: true }),
+    page.getByLabel("Müzisyen isimleri", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Görünümü kapat" }).click();
-  await page
-    .getByRole("button", { name: "Harita rehberi", exact: true })
-    .click();
-  await page
-    .locator(".graph-legend")
-    .getByRole("button", { name: "Piyano", exact: true })
-    .click();
-  await expect(
-    page.getByLabel("Enstrüman vurgula", { exact: true }),
-  ).toHaveValue("Piano");
-  await page.getByRole("button", { name: "Vurgulamayı kaldır" }).click();
-  await page.getByRole("button", { name: "Rehberi kapat" }).click();
+  await legend("Piyano").click();
+  await expect(legend("Piyano")).toHaveAttribute("aria-pressed", "true");
+  await expect(instrumentPanel).toBeVisible();
+  await legend("Piyano").click();
+  await expect(instrumentPanel).toHaveCount(0);
   const fitZoom = Number(await canvas.getAttribute("data-zoom"));
   await page.getByRole("button", { name: "Yakınlaştır", exact: true }).click();
   await expect
@@ -148,16 +149,17 @@ try {
   await page
     .getByRole("button", { name: "Ekrana sığdır", exact: true })
     .click();
+  // min=10 keeps musicians with at least ten concerts.
   const defaultGraph = filterGraph(
     { nodes: data.nodes, edges: concerts.edges },
     concerts.counts,
-    10,
+    9,
   );
   const visibleEdges = Number(await canvas.getAttribute("data-visible-edges"));
   expect(visibleEdges).toBeGreaterThan(0);
   expect(visibleEdges).toBe(topCollaboratorEdges(defaultGraph.edges, 5).length);
   await expect(page.locator(".active-filters")).toContainText(
-    "Kişi başına ilk 5 bağlantı",
+    "Kişi başına ilk 5 bağ",
   );
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
   await page
@@ -171,7 +173,7 @@ try {
   await page.reload();
   await ready();
   await expect(page.locator(".active-filters")).toContainText(
-    "Kişi başına ilk 10 bağlantı",
+    "Kişi başına ilk 10 bağ",
   );
   await expect(canvas).toHaveAttribute(
     "data-visible-edges",
@@ -249,7 +251,6 @@ try {
   await checkNames(20);
 
   // Highlighting preserves topology, layout, camera, selection and cross-instrument ties.
-  const instrument = page.getByLabel("Enstrüman vurgula", { exact: true });
   const snapshot = async () => ({
     view: await canvas.getAttribute("data-view"),
     edges: await canvas.getAttribute("data-visible-edges"),
@@ -270,7 +271,7 @@ try {
         (concerts.counts[b.id] ?? 0) - (concerts.counts[a.id] ?? 0) ||
         b.degree - a.degree,
     );
-  await instrument.selectOption("Piano");
+  await legend("Piyano").click();
   await expect(canvas).toHaveAttribute(
     "data-highlighted",
     defaultGraph.nodes
@@ -279,33 +280,29 @@ try {
       .join(","),
   );
   expect(await snapshot()).toEqual(beforeHighlight);
-  await expect(page.locator(".instrument-ranking button span")).toHaveText(
-    pianists.map((node) => node.name),
+  await expect(instrumentPanel.locator(".row-name")).toHaveText(
+    pianists.slice(0, 200).map((node) => node.name),
   );
-  await expect(
-    page.locator(".instrument-ranking button small").first(),
-  ).toHaveText(
-    `${concerts.counts[pianists[0].id].toLocaleString("tr-TR")} konser`,
+  await expect(instrumentPanel.locator(".row-value").first()).toHaveText(
+    concerts.counts[pianists[0].id].toLocaleString("tr-TR"),
   );
   await page.screenshot({ path: ".cache/instrument-piano.png" });
-  await page.locator(".instrument-ranking button").first().click();
+  await instrumentPanel.locator(".row").first().click();
   await page.mouse.move(1510, 700);
   const pianist = pianists[0];
-  const ties = adjacency(defaultGraph).get(pianist.id)!.slice(0, 6);
+  const ties = adjacency(defaultGraph).get(pianist.id)!.slice(0, 8);
   expect(
     ties.some(
       (tie) => data.nodes.find((node) => node.id === tie.id)!.group !== "Piano",
     ),
   ).toBe(true);
   await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
-  await expect(
-    page.locator(".selection-panel > .collaborators button span"),
-  ).toHaveText(
+  await expect(collaboratorNames).toHaveText(
     ties.map((tie) => data.nodes.find((node) => node.id === tie.id)!.name),
   );
   const selectedView = await snapshot();
   const selectedPosition = await canvas.getAttribute("data-selected-position");
-  await instrument.selectOption("Brass");
+  await legend("Bakır üflemeli").click();
   await expect(canvas).toHaveAttribute(
     "data-highlighted",
     defaultGraph.nodes
@@ -321,7 +318,10 @@ try {
   await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
   await page.reload();
   await ready();
-  await expect(instrument).toHaveValue("Brass");
+  await expect(legend("Bakır üflemeli")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
   await page.getByRole("button", { name: "Seçimi kaldır" }).click();
   await page.getByRole("button", { name: "Vurgulamayı kaldır" }).click();
@@ -357,23 +357,17 @@ try {
   await search.press("Escape");
   await search.blur();
 
-  // Switching layouts runs a fresh worker and persists a valid selection.
+  // Spacing runs a fresh worker and persists in the URL.
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  for (const engine of ["d3", "ngraph", "forceatlas2", "communities"]) {
-    await page.getByLabel("Yerleşim", { exact: true }).selectOption(engine);
-    await expect(canvas).toHaveAttribute("data-engine", engine);
-    await ready();
-    await expect(page.getByRole("status")).toContainText("Yerleşim hazır");
-    await page.screenshot({ path: `.cache/layout-${engine}.png` });
-  }
-  await page.getByLabel("Aralık", { exact: true }).selectOption("1.6");
+  await spacing("Ferah").click();
   await ready();
+  await expect(page.getByRole("status")).toContainText("Yerleşim hazır");
   await expect(page).toHaveURL(/spacing=1.6/);
   await page.reload();
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(page.getByLabel("Aralık", { exact: true })).toHaveValue("1.6");
-  await page.getByLabel("Aralık", { exact: true }).selectOption("1");
+  await expect(spacing("Ferah")).toHaveAttribute("aria-pressed", "true");
+  await spacing("Dengeli").click();
   await ready();
 
   await page.getByRole("button", { name: "Görünümü kapat" }).click();
@@ -446,20 +440,23 @@ try {
   await page.getByRole("button", { name: "Seçimi kaldır" }).click();
 
   await page.getByRole("button", { name: "Filtreler", exact: true }).click();
-  await page.getByLabel("Konser sayısı", { exact: true }).fill("100");
+  await page.getByRole("button", { name: "En az 50 konser" }).click();
   await ready();
+  await expect(page).toHaveURL(/min=50/);
   const expected = filterGraph(
     { nodes: data.nodes, edges: concerts.edges },
     concerts.counts,
-    100,
+    49,
   );
   await expect(page.locator(".filter-footer")).toContainText(
     expected.nodes.length.toLocaleString("tr-TR"),
   );
   await page.screenshot({ path: ".cache/minimal-filters.png" });
-  await page.getByLabel("Konser sayısı", { exact: true }).fill("999999");
+  await page.goto(`${base}?min=999999&top=5`);
   await expect(page.locator(".empty-state")).toBeVisible();
-  await page.getByLabel("Konser sayısı", { exact: true }).fill("10");
+  await page.goto(`${base}?min=10&top=5`);
+  await ready();
+  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
   await page.getByLabel("Mekan", { exact: true }).fill("nardis");
   await page.getByRole("button", { name: /Nardis Jazz Club/ }).click();
   await ready();
@@ -467,7 +464,7 @@ try {
   const venueGraph = filterGraph(
     { nodes: data.nodes, edges: venue.edges },
     venue.musicians,
-    10,
+    9,
     venue.musicians,
   );
   await expect(page.locator(".filter-footer")).toContainText(
@@ -485,9 +482,7 @@ try {
   await expect(page.locator(".active-filters")).toContainText(
     "Nardis Jazz Club",
   );
-  await page
-    .getByLabel("Enstrüman vurgula", { exact: true })
-    .selectOption("Guitar");
+  await legend("Gitar").click();
   const otherInstrument = venueGraph.nodes.find(
     (node) => node.group !== "Guitar",
   )!;
@@ -501,7 +496,7 @@ try {
   await page
     .getByRole("button", { name: "Filtreleri temizle", exact: true })
     .click();
-  await page.getByLabel("Konser sayısı", { exact: true }).fill("10");
+  await page.getByRole("button", { name: "En az 10 konser" }).click();
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
   await ready();
   await pressGraphKey("+");
@@ -514,8 +509,8 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await instrument.selectOption("Brass");
-  await expect(page.locator(".instrument-ranking")).toBeVisible();
+  await legend("Bakır üflemeli").click();
+  await expect(instrumentPanel).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -544,7 +539,7 @@ try {
       .locator(".filter-panel")
       .evaluate((panel) => panel.getAnimations().length),
   ).toBe(0);
-  const done = page.getByRole("button", { name: "Sonuçları keşfet" });
+  const done = page.getByRole("button", { name: "Sonuçları göster" });
   const doneY = (await done.boundingBox())!.y;
   await page
     .getByRole("button", { name: "Kişi başına ilk 3 bağlantı", exact: true })
