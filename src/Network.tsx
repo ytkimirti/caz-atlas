@@ -13,7 +13,7 @@ import { expandPlaybackView, frameNeighborhood, orbitRadius } from "./camera";
 import type { Viewport } from "./camera";
 import { project3D, sceneBounds } from "./projection";
 import type { Point3D } from "./projection";
-import { groupInfo } from "./types";
+import { groupInfo, groups } from "./types";
 import { adjacency, edgeKey, pathEdges } from "./graph";
 import { clusterBounds, ensembleClusters } from "./ensembles";
 import { LivePhysicsClient } from "./live-physics-client";
@@ -47,6 +47,42 @@ interface Props {
   onLayoutStatus: (status: LayoutStatus) => void;
   onSelect: (id: number | null) => void;
   onHover: (id: number | null) => void;
+}
+
+// Ties by shared concerts: one, two or three, four to nine, ten or more.
+const EDGE_TIERS = 4;
+function edgeTier(weight: number) {
+  return weight >= 10 ? 3 : weight >= 4 ? 2 : weight >= 2 ? 1 : 0;
+}
+// Zoomed out, single gigs fade into the background and frequent partnerships
+// carry the structure. Zoomed in, every tie reads at similar strength.
+const EDGE_STYLE = [
+  { far: [0.06, 0.45], near: [0.3, 0.7], rgb: "178, 180, 170" },
+  { far: [0.1, 0.55], near: [0.34, 0.8], rgb: "160, 166, 154" },
+  { far: [0.18, 0.7], near: [0.4, 1], rgb: "132, 146, 130" },
+  { far: [0.3, 0.9], near: [0.5, 1.2], rgb: "96, 124, 106" },
+];
+// Screen length in pixels beyond which a tie is drawn at reduced opacity.
+const LONG_EDGE = 180;
+const LONG_EDGE_ALPHA = 0.25;
+const edgeStyles = new Map<number, { color: string; width: number }>();
+function edgeStyle(tier: number, zoom: number) {
+  // Quantized so a zoom gesture reuses a handful of style strings.
+  const step = Math.round(
+    Math.max(0, Math.min(1, Math.log(zoom / 0.12) / Math.log(1 / 0.12))) * 20,
+  );
+  const key = tier * 32 + step;
+  let style = edgeStyles.get(key);
+  if (!style) {
+    const t = step / 20,
+      { far, near, rgb } = EDGE_STYLE[tier];
+    style = {
+      color: `rgba(${rgb}, ${(far[0] + (near[0] - far[0]) * t).toFixed(3)})`,
+      width: far[1] + (near[1] - far[1]) * t,
+    };
+    edgeStyles.set(key, style);
+  }
+  return style;
 }
 
 const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
@@ -219,22 +255,66 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     let yaw = 0.35,
       pitch = -0.2;
     const projected = new Map<number, ReturnType<typeof project3D>>();
+    // Typed mirrors of the projection for the per-frame edge and marker passes.
+    const nodeIndex = new Map(nodes.map((n, i) => [n.id, i]));
+    const projX = new Float64Array(nodes.length),
+      projY = new Float64Array(nodes.length);
+    const palette = groups.map((g) => g.color);
+    const byColor = palette.map((color) =>
+      Int32Array.from(
+        nodes.flatMap((n, i) =>
+          groupInfo(n.group).color === color ? [i] : [],
+        ),
+      ),
+    );
+    const plain = new Uint8Array(nodes.length);
     function updateProjection() {
       const nextRadius = orbitRadius(scene, pivot);
       projectionRadius = props.livePhysics
         ? Math.max(projectionRadius, nextRadius)
         : nextRadius;
       projected.clear();
-      for (const [id, p] of positions)
-        projected.set(
-          id,
-          spatial
-            ? project3D(p, pivot, projectionRadius, yaw, pitch)
-            : { x: p.x, y: p.y, depth: 0, scale: 1 },
-        );
+      for (const [id, p] of positions) {
+        const q = spatial
+          ? project3D(p, pivot, projectionRadius, yaw, pitch)
+          : { x: p.x, y: p.y, depth: 0, scale: 1 };
+        projected.set(id, q);
+        const i = nodeIndex.get(id);
+        if (i === undefined) continue;
+        projX[i] = q.x;
+        projY[i] = q.y;
+      }
     }
     updateProjection();
     const opacity = new Map(props.data.nodes.map((n) => [n.id, 1]));
+    let edgeCache: {
+      edges: Edge[];
+      a: Int32Array;
+      b: Int32Array;
+      offsets: Int32Array;
+    } | null = null;
+    // Endpoint indexes grouped by weight tier, rebuilt when the tie set changes.
+    function edgeArrays(edges: Edge[]) {
+      if (edgeCache?.edges === edges) return edgeCache;
+      const offsets = new Int32Array(EDGE_TIERS + 1);
+      for (const e of edges) offsets[edgeTier(e.weight) + 1]++;
+      for (let t = 0; t < EDGE_TIERS; t++) offsets[t + 1] += offsets[t];
+      const fill = offsets.slice(0, EDGE_TIERS);
+      const a = new Int32Array(edges.length),
+        b = new Int32Array(edges.length);
+      for (const e of edges) {
+        const k = fill[edgeTier(e.weight)]++;
+        a[k] = nodeIndex.get(e.source) ?? -1;
+        b[k] = nodeIndex.get(e.target) ?? -1;
+      }
+      edgeCache = { edges, a, b, offsets };
+      return edgeCache;
+    }
+    function setEdgeStyle(tier: number, zoom: number) {
+      const style = edgeStyle(tier, zoom);
+      ctx.strokeStyle = style.color;
+      ctx.lineWidth = style.width;
+    }
     const animatedEdges = new Map(
       props.edges.map((edge) => [
         edgeKey(edge.source, edge.target),
@@ -1153,18 +1233,69 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
-      ctx.beginPath();
-      ctx.strokeStyle = "#b8b9b050";
-      ctx.lineWidth = 0.7;
-      for (const { edge, alpha } of animatedEdges.values())
-        if (alpha === 1) line(edge);
-      ctx.stroke();
-      for (const { edge, alpha } of animatedEdges.values()) {
-        if (alpha === 1 || alpha === 0) continue;
-        ctx.globalAlpha = alpha;
-        ctx.beginPath();
-        line(edge);
-        ctx.stroke();
+      if (!fading) {
+        // Settled graph: index-based segments, one stroke per weight tier.
+        // Screen-spanning ties are dimmed so they do not veil the groups.
+        const { a, b, offsets } = edgeArrays(s.edges);
+        const long = LONG_EDGE * LONG_EDGE;
+        for (let tier = 0; tier < EDGE_TIERS; tier++) {
+          const from = offsets[tier],
+            to = offsets[tier + 1];
+          if (from === to) continue;
+          setEdgeStyle(tier, zoom);
+          const far = new Path2D();
+          ctx.beginPath();
+          for (let k = from; k < to; k++) {
+            const i = a[k],
+              j = b[k];
+            if (i < 0 || j < 0) continue;
+            const ax = projX[i] * zoom + panX,
+              ay = projY[i] * zoom + panY,
+              bx = projX[j] * zoom + panX,
+              by = projY[j] * zoom + panY;
+            if (
+              (ax < 0 && bx < 0) ||
+              (ay < 0 && by < 0) ||
+              (ax > width && bx > width) ||
+              (ay > height && by > height)
+            )
+              continue;
+            // Sub-pixel ties are hidden under their markers anyway.
+            const dx = bx - ax,
+              dy = by - ay;
+            const length = dx * dx + dy * dy;
+            if (length < 1) continue;
+            if (length > long) {
+              far.moveTo(ax, ay);
+              far.lineTo(bx, by);
+              continue;
+            }
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(bx, by);
+          }
+          ctx.stroke();
+          ctx.globalAlpha = LONG_EDGE_ALPHA;
+          ctx.stroke(far);
+          ctx.globalAlpha = 1;
+        }
+      } else {
+        // Fading ties batch by tier and a quantized opacity.
+        const batches = new Map<number, Edge[]>();
+        for (const { edge, alpha } of animatedEdges.values()) {
+          if (alpha === 0) continue;
+          const key =
+            edgeTier(edge.weight) * 16 + Math.max(1, Math.round(alpha * 8));
+          const batch = batches.get(key);
+          if (batch) batch.push(edge);
+          else batches.set(key, [edge]);
+        }
+        for (const key of [...batches.keys()].sort((x, y) => x - y)) {
+          setEdgeStyle(key >> 4, zoom);
+          ctx.globalAlpha = (key & 15) / 8;
+          ctx.beginPath();
+          for (const edge of batches.get(key)!) line(edge);
+          ctx.stroke();
+        }
       }
       ctx.globalAlpha = 1;
       // A short pulse follows newly formed ties, attached to the moving bodies.
@@ -1214,7 +1345,50 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               projected.get(a.id)!.depth - projected.get(b.id)!.depth,
           )
         : s.drawOrder;
+      // Unemphasized, fully faded-in markers share one fill per color.
+      // Tiny ones become squares of equal area, which rasterize faster.
+      plain.fill(0);
+      if (!spatial)
+        for (let color = 0; color < palette.length; color++) {
+          ctx.beginPath();
+          let any = false;
+          const counts = s.counts,
+            grow = Math.sqrt(zoom);
+          for (const i of byColor[color]) {
+            const id = nodes[i].id;
+            if (
+              opacity.get(id) !== 1 ||
+              (emphasized.size && emphasized.has(id)) ||
+              (highlighted.size && highlighted.has(id)) ||
+              id === s.hovered ||
+              (births.size && births.has(id))
+            )
+              continue;
+            plain[i] = 1;
+            const x = projX[i] * zoom + panX,
+              y = projY[i] * zoom + panY;
+            if (x < -20 || y < -20 || x > width + 20 || y > height + 20)
+              continue;
+            // radius() without the 3D scale lookup.
+            const r = Math.max(
+              0.75,
+              Math.min(9, (2 + Math.log2(1 + (counts[id] || 1)) * 0.5) * grow),
+            );
+            if (r < 1.25) {
+              const half = r * 0.886;
+              ctx.rect(x - half, y - half, half * 2, half * 2);
+            } else {
+              ctx.moveTo(x + r, y);
+              ctx.arc(x, y, r, 0, Math.PI * 2);
+            }
+            any = true;
+          }
+          if (!any) continue;
+          ctx.fillStyle = palette[color];
+          ctx.fill();
+        }
       for (const node of drawOrder) {
+        if (plain[nodeIndex.get(node.id)!]) continue;
         const alpha = opacity.get(node.id) || 0;
         if (!alpha) continue;
         const projection = projected.get(node.id)!;
@@ -1425,11 +1599,70 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       const visibleEnsembles: string[] = [];
       if (s.showEnsembles) {
         const labeledMembers = new Set<number>();
-        const markerBounds = s.data.nodes.map((node) => {
-          const p = point(node.id);
-          const r = markerRadius(node.id) + 7;
-          return { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2 };
-        });
+        // Marker centers bucketed into an on-screen grid on the first query.
+        // Boxes are checked exactly against the marker radius plus padding.
+        const CELL = 32,
+          REACH = 30;
+        const cols = Math.ceil(width / CELL) + 1,
+          rows = Math.ceil(height / CELL) + 1;
+        let cellStart: Int32Array | null = null,
+          cellItems: Int32Array | null = null;
+        const buildGrid = () => {
+          const data = s.data.nodes;
+          const cellOf = new Int32Array(data.length).fill(-1);
+          const start = new Int32Array(cols * rows + 1);
+          data.forEach((node, k) => {
+            const i = nodeIndex.get(node.id);
+            if (i === undefined) return;
+            const x = projX[i] * zoom + panX,
+              y = projY[i] * zoom + panY;
+            if (
+              x < -REACH ||
+              y < -REACH ||
+              x > width + REACH ||
+              y > height + REACH
+            )
+              return;
+            const c =
+              Math.max(0, Math.min(rows - 1, Math.floor(y / CELL))) * cols +
+              Math.max(0, Math.min(cols - 1, Math.floor(x / CELL)));
+            cellOf[k] = c;
+            start[c + 1]++;
+          });
+          for (let c = 0; c < cols * rows; c++) start[c + 1] += start[c];
+          const fill = start.slice(0, cols * rows);
+          const items = new Int32Array(start[cols * rows]);
+          cellOf.forEach((c, k) => {
+            if (c >= 0) items[fill[c]++] = k;
+          });
+          cellStart = start;
+          cellItems = items;
+        };
+        const markersNear = (x: number, y: number, w: number, h: number) => {
+          if (!cellStart) buildGrid();
+          const data = s.data.nodes;
+          const x0 = Math.max(0, Math.floor((x - REACH) / CELL)),
+            x1 = Math.min(cols - 1, Math.floor((x + w + REACH) / CELL)),
+            y0 = Math.max(0, Math.floor((y - REACH) / CELL)),
+            y1 = Math.min(rows - 1, Math.floor((y + h + REACH) / CELL));
+          for (let cy = y0; cy <= y1; cy++)
+            for (let cx = x0; cx <= x1; cx++) {
+              const c = cy * cols + cx;
+              for (let k = cellStart![c]; k < cellStart![c + 1]; k++) {
+                const id = data[cellItems![k]].id;
+                const p = point(id),
+                  r = markerRadius(id) + 7;
+                if (
+                  x < p.x + r &&
+                  x + w > p.x - r &&
+                  y < p.y + r &&
+                  y + h > p.y - r
+                )
+                  return true;
+              }
+            }
+          return false;
+        };
         for (const { ensemble, members } of clusters) {
           if (
             spatial &&
@@ -1461,10 +1694,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               x + w <= width - 8 &&
               y >= 90 &&
               y + h <= height - 75 &&
-              ![...occupied, ...markerBounds].some(
+              !occupied.some(
                 (b) =>
                   x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y,
-              ),
+              ) &&
+              !markersNear(x, y, w, h),
           );
           if (!best) continue;
           const { x, y } = best;
