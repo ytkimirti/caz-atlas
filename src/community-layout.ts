@@ -4,14 +4,13 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
-  forceX,
-  forceY,
 } from "d3-force";
 import type { SimulationLinkDatum } from "d3-force";
 import { packEnclose, packSiblings } from "d3-hierarchy";
 import { UndirectedGraph } from "graphology";
 import louvain from "graphology-communities-louvain";
 import { layoutLinks } from "./layout-links";
+import { separate, simulateLocal } from "./local-force";
 import type { LayoutNode, LayoutRequest, Position } from "./layout";
 import type { Edge } from "./types";
 
@@ -35,6 +34,9 @@ export interface CommunityResult {
     r: number;
   }[];
 }
+
+// Typical desktop viewport, used to shape the packing of disconnected parts.
+const ASPECT = 1.6;
 
 export function computeCommunityLayout(
   request: LayoutRequest,
@@ -125,24 +127,34 @@ export function computeCommunityLayout(
     });
     if (group.members.length > 1) {
       // Attraction is local to a community. Different groups never share this origin.
-      forceSimulation(group.members)
-        .force(
-          "links",
-          forceLink<Member, Edge>(layoutLinks(group.members, group.edges))
-            .id((n) => n.id)
-            .distance(45 * spacing),
-        )
-        .force("charge", forceManyBody<Member>().strength(-45 * spacing))
-        .force("x", forceX(0).strength(0.035))
-        .force("y", forceY(0).strength(0.035))
-        .force("collision", forceCollide<Member>(clearance).iterations(3))
-        .stop()
-        .tick(220);
-      forceSimulation(group.members)
-        .velocityDecay(0.6)
-        .force("collision", forceCollide<Member>(clearance).iterations(4))
-        .stop()
-        .tick(60);
+      const index = new Map(group.members.map((n, i) => [n.id, i]));
+      const xs = Float64Array.from(group.members, (n) => n.x),
+        ys = Float64Array.from(group.members, (n) => n.y);
+      simulateLocal(
+        xs,
+        ys,
+        layoutLinks(group.members, group.edges).map((e) => [
+          index.get(e.source)!,
+          index.get(e.target)!,
+          e.weight,
+        ]),
+        {
+          // Frequent partners sit closer; the collision pass keeps clearance.
+          distance: (w) => (45 * spacing) / Math.sqrt(1 + Math.log2(w)),
+          charge: -45 * spacing,
+          gravity: 0.035,
+          ticks: 220,
+        },
+      );
+      separate(
+        xs,
+        ys,
+        Float64Array.from(group.members, (n) => clearance(n)),
+      );
+      group.members.forEach((n, i) => {
+        n.x = xs[i];
+        n.y = ys[i];
+      });
     }
     const circle = packEnclose(
       group.members.map((n) => ({ x: n.x, y: n.y, r: clearance(n) })),
@@ -246,16 +258,48 @@ export function computeCommunityLayout(
     }
     island.r = bounds.r + gap;
   });
-  // Unrelated components have no meaningful relative direction. Pack their
-  // enclosing circles without altering relationships inside each component.
+  // Unrelated components have no meaningful relative direction. Keep the
+  // largest on the left and shelf-pack the rest beside it, filling a
+  // screen-shaped rectangle instead of a ring around the main network.
   islands.sort((a, b) => b.r - a.r || a.groups[0].id - b.groups[0].id);
-  packSiblings(islands);
-  for (const island of islands) {
+  const [main, ...rest] = islands;
+  main.x = main.r;
+  main.y = 0;
+  if (rest.length) {
+    const area = islands.reduce((sum, i) => sum + 4 * i.r * i.r, 0);
+    const height = Math.max(2 * main.r, Math.sqrt(area / ASPECT));
+    // A narrow column when little remains, never wider than the screen shape.
+    const restArea = area - 4 * main.r * main.r;
+    const width = Math.max(
+      2 * rest[0].r,
+      Math.min(ASPECT * height - 2 * main.r, (restArea / height) * 1.15),
+    );
+    let x = 0,
+      y = 0,
+      row = 0;
+    for (const island of rest) {
+      const size = 2 * island.r;
+      if (x > 0 && x + size > width) {
+        x = 0;
+        y += row;
+        row = 0;
+      }
+      island.x = 2 * main.r + x + island.r;
+      island.y = y + island.r;
+      x += size;
+      row = Math.max(row, size);
+    }
+    // Center the strip vertically beside the main network.
+    const shift = (Math.max(y + row, 2 * main.r) - 2 * main.r) / 2;
+    const offset = -Math.max(y + row, 2 * main.r) / 2;
+    main.y = offset + main.r + shift;
+    for (const island of rest) island.y += offset;
+  }
+  for (const island of islands)
     for (const g of island.groups) {
       g.x += island.x;
       g.y += island.y;
     }
-  }
   const positions = groups.flatMap((g) =>
     g.members.map((n) => ({ id: n.id, x: n.x + g.x, y: n.y + g.y })),
   );
