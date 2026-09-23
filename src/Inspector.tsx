@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   ArrowUpRight,
@@ -30,9 +30,12 @@ interface Actions {
 }
 type ProjectState = "ready" | "loading" | "error";
 
-function Shell({
+// One persistent frame for every selection, so the back and forward buttons
+// keep focus while the body swaps underneath them.
+export function InspectorShell({
   label,
   caption,
+  contentKey,
   nav,
   onClose,
   closeLabel,
@@ -40,13 +43,34 @@ function Shell({
 }: {
   label: string;
   caption: string;
+  contentKey: string;
   nav: InspectorNav;
   onClose: () => void;
   closeLabel: string;
   children: ReactNode;
 }) {
+  const panel = useRef<HTMLElement>(null);
+  const keyboardOpen = useRef(false);
+  // A row opened from the keyboard is replaced by the new body; land on its title.
+  useLayoutEffect(() => {
+    if (!keyboardOpen.current) return;
+    keyboardOpen.current = false;
+    if (panel.current?.contains(document.activeElement)) return;
+    panel.current?.querySelector<HTMLElement>("h2")?.focus({
+      preventScroll: true,
+    });
+  }, [contentKey]);
   return (
-    <section className="selection-panel surface" aria-label={label}>
+    <section
+      ref={panel}
+      className="selection-panel surface"
+      aria-label={label}
+      onClickCapture={(event) => {
+        keyboardOpen.current =
+          event.detail === 0 &&
+          !!(event.target as HTMLElement).closest(".row");
+      }}
+    >
       <div className="inspector-bar">
         <div className="inspector-nav">
           <button
@@ -172,8 +196,6 @@ export function MusicianInspector({
   byId,
   projects,
   onRetryProjects,
-  nav,
-  onClose,
   actions,
 }: {
   musician: GraphMusician;
@@ -183,8 +205,6 @@ export function MusicianInspector({
   byId: Map<number, GraphMusician>;
   projects: ProjectState;
   onRetryProjects: () => void;
-  nav: InspectorNav;
-  onClose: () => void;
   actions: Actions;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -193,17 +213,11 @@ export function MusicianInspector({
     ? collaborators
     : collaborators.slice(0, COLLABORATOR_PREVIEW);
   return (
-    <Shell
-      label="Seçili müzisyen"
-      caption="MÜZİSYEN"
-      nav={nav}
-      onClose={onClose}
-      closeLabel="Seçimi kaldır"
-    >
+    <>
       <div className="inspector-identity">
         <MusicianPortrait key={musician.key} musician={musician} />
         <div>
-          <h2>{musician.name}</h2>
+          <h2 tabIndex={-1}>{musician.name}</h2>
           <button
             className="instrument-chip"
             title={`Haritada tüm ${info.name.toLocaleLowerCase("tr-TR")} müzisyenlerini vurgula`}
@@ -295,7 +309,7 @@ export function MusicianInspector({
           </button>
         )}
       </div>
-    </Shell>
+    </>
   );
 }
 
@@ -304,8 +318,6 @@ export function EnsembleInspector({
   members,
   visibleIds,
   place,
-  nav,
-  onClose,
   onFrame,
   onRevealAll,
   actions,
@@ -314,27 +326,19 @@ export function EnsembleInspector({
   members: { member: GraphMusician; concerts: number }[];
   visibleIds: Set<number>;
   place: string;
-  nav: InspectorNav;
-  onClose: () => void;
   onFrame: () => void;
   onRevealAll: () => void;
   actions: Actions;
 }) {
   const hidden = members.filter(({ member }) => !visibleIds.has(member.id));
   return (
-    <Shell
-      label="Seçili grup"
-      caption="GRUP / PROJE"
-      nav={nav}
-      onClose={onClose}
-      closeLabel="Seçimi kaldır"
-    >
+    <>
       <div className="inspector-identity">
         <div className="ensemble-avatar" aria-hidden="true">
           <Users size={24} />
         </div>
         <div>
-          <h2>{ensemble.name}</h2>
+          <h2 tabIndex={-1}>{ensemble.name}</h2>
           <p className="inspector-place">{place}</p>
         </div>
       </div>
@@ -375,7 +379,7 @@ export function EnsembleInspector({
           ))}
         </div>
       </div>
-    </Shell>
+    </>
   );
 }
 
@@ -384,27 +388,17 @@ export function InstrumentInspector({
   musicians,
   counts,
   place,
-  nav,
-  onClose,
   actions,
 }: {
   group: string;
   musicians: GraphMusician[];
   counts: Record<string, number>;
   place: string;
-  nav: InspectorNav;
-  onClose: () => void;
   actions: Actions;
 }) {
   const info = groupInfo(group);
   return (
-    <Shell
-      label="Vurgulanan enstrüman"
-      caption="ENSTRÜMAN"
-      nav={nav}
-      onClose={onClose}
-      closeLabel="Vurgulamayı kaldır"
-    >
+    <>
       <div className="inspector-identity">
         <div
           className="instrument-avatar"
@@ -414,7 +408,7 @@ export function InstrumentInspector({
           <InstrumentIcon group={group} size={26} />
         </div>
         <div>
-          <h2>{info.name}</h2>
+          <h2 tabIndex={-1}>{info.name}</h2>
           <p className="inspector-place" aria-live="polite">
             Haritada {number(musicians.length)} müzisyen vurgulanıyor
           </p>
@@ -436,6 +430,6 @@ export function InstrumentInspector({
           )}
         </div>
       </div>
-    </Shell>
+    </>
   );
 }

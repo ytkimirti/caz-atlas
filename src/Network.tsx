@@ -2037,6 +2037,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     invalidateFrame();
     return () => {
       disposed = true;
+      if (hoverRegion !== null) state.current.onHoverEnsemble(null);
       previousPositions.current = new Map(positions);
       physics?.dispose();
       document.removeEventListener("visibilitychange", invalidateFrame);

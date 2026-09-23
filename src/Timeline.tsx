@@ -92,6 +92,14 @@ export default function Timeline({
   const [speed, setSpeed] = useState(1);
   const [hover, setHover] = useState<number | null>(null);
   const track = useRef<HTMLDivElement>(null);
+  // Collapsing swaps the toggle for its counterpart; keep keyboard focus on it.
+  const toggle = useRef<HTMLButtonElement>(null);
+  const refocusToggle = useRef(false);
+  useEffect(() => {
+    if (!refocusToggle.current) return;
+    refocusToggle.current = false;
+    toggle.current?.focus();
+  }, [collapsed]);
   const drag = useRef<{
     kind: "start" | "end" | "cursor" | "range";
     month: number;
@@ -225,9 +233,13 @@ export default function Timeline({
         data-experience={livePhysics ? "live" : "explore"}
       >
         <button
+          ref={toggle}
           className="timeline-expand"
           aria-expanded="false"
-          onClick={() => onCollapsedChange(false)}
+          onClick={() => {
+            refocusToggle.current = true;
+            onCollapsedChange(false);
+          }}
         >
           <ChevronUp size={15} aria-hidden="true" />
           <span className="timeline-expand-label">Zaman</span>
@@ -281,8 +293,12 @@ export default function Timeline({
           className="icon-button timeline-collapse"
           aria-label="Zaman çizelgesini gizle"
           title="Zaman çizelgesini gizle"
+          ref={toggle}
           aria-expanded="true"
-          onClick={() => onCollapsedChange(true)}
+          onClick={() => {
+            refocusToggle.current = true;
+            onCollapsedChange(true);
+          }}
         >
           <ChevronDown size={16} />
         </button>

@@ -9,6 +9,8 @@ export const sameEntry = (a: NavEntry, b: NavEntry) =>
 interface HistoryState {
   nav: number;
   entry: NavEntry;
+  // How far forward the trail went when this entry was last shown.
+  length?: number;
 }
 const readState = (value: unknown): HistoryState | null =>
   value &&
@@ -23,30 +25,35 @@ const readState = (value: unknown): HistoryState | null =>
 // only and resolve when visited.
 export function useNavigation(initial: NavEntry) {
   const [state, setState] = useState(() => {
-    const index = readState(window.history.state)?.nav ?? 0;
+    const saved = readState(window.history.state);
+    const index = saved?.nav ?? 0;
     const entries: (NavEntry | undefined)[] = [];
     entries[index] = initial;
-    return { entries, index, length: index + 1 };
+    return {
+      entries,
+      index,
+      length: Math.max(index + 1, saved?.length ?? 0),
+    };
   });
   const current = useRef(state);
   current.current = state;
   useEffect(() => {
+    const { index, length } = current.current;
     window.history.replaceState(
-      { nav: current.current.index, entry: initial } satisfies HistoryState,
+      { nav: index, entry: initial, length } satisfies HistoryState,
       "",
     );
     const pop = (event: PopStateEvent) => {
       const next = readState(event.state);
       if (!next) return;
-      setState((s) => {
-        const entries = [...s.entries];
-        entries[next.nav] = next.entry;
-        return {
-          entries,
-          index: next.nav,
-          length: Math.max(s.length, next.nav + 1),
-        };
-      });
+      const s = current.current;
+      const entries = [...s.entries];
+      entries[next.nav] = next.entry;
+      const length = Math.max(s.length, next.nav + 1);
+      window.history.replaceState({ ...next, length }, "");
+      const updated = { entries, index: next.nav, length };
+      current.current = updated;
+      setState(updated);
     };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
@@ -58,7 +65,7 @@ export function useNavigation(initial: NavEntry) {
     if (sameEntry(s.entries[s.index] ?? null, entry)) return;
     const index = s.index + 1;
     window.history.pushState(
-      { nav: index, entry } satisfies HistoryState,
+      { nav: index, entry, length: index + 1 } satisfies HistoryState,
       "",
       window.location.href,
     );

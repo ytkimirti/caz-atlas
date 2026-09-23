@@ -16,6 +16,7 @@ import Network from "./Network";
 import InstrumentIcon from "./InstrumentIcon";
 import {
   EnsembleInspector,
+  InspectorShell,
   InstrumentInspector,
   MusicianInspector,
 } from "./Inspector";
@@ -607,6 +608,10 @@ function AtlasApp({
   );
   const selectedEnsemble =
     (selectedEnsembleId && ensemblesById.get(selectedEnsembleId)) || null;
+  // Until projects load the id is all there is; after that, an unknown or
+  // filtered-out group no longer counts as selected.
+  const ensembleSelected =
+    selectedEnsembleId !== null && (!projects || selectedEnsemble !== null);
   const previewEnsemble =
     (previewEnsembleId && ensemblesById.get(previewEnsembleId)) || null;
   const mapEnsemble =
@@ -701,6 +706,7 @@ function AtlasApp({
   }, [loadProjects, projects, projectAttempt]);
   useEffect(() => {
     setHoveredId(null);
+    setMapEnsembleId(null);
   }, [graph]);
   useEffect(() => {
     setPreviewEnsembleId(null);
@@ -763,7 +769,7 @@ function AtlasApp({
     if (resolution !== 1.5) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
-    if (selectedEnsembleId) query.set("g", selectedEnsembleId);
+    if (ensembleSelected) query.set("g", selectedEnsembleId!);
     // Keep the navigation record attached to this history entry.
     window.history.replaceState(
       window.history.state,
@@ -777,6 +783,7 @@ function AtlasApp({
     topCollaborators,
     selected,
     selectedEnsembleId,
+    ensembleSelected,
     byId,
     range,
     bounds,
@@ -787,7 +794,7 @@ function AtlasApp({
     resolution,
   ]);
   const navigate = nav.navigate;
-  const hasSelection = nav.entry !== null;
+  const hasSelection = selected !== null || ensembleSelected;
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if (e.isComposing) return;
@@ -843,7 +850,7 @@ function AtlasApp({
     [navigate, selectedEnsembleId],
   );
   function entryLabel(entry: NavEntry | undefined) {
-    if (entry === undefined) return "Önceki görünüm";
+    if (entry === undefined) return "Kayıtlı görünüm";
     if (entry === null) return "Genel görünüm";
     if (entry.kind === "musician")
       return byId.get(entry.id)?.name ?? "Müzisyen";
@@ -1251,44 +1258,69 @@ function AtlasApp({
         </section>
       )}
 
-      {selectedEnsemble ? (
-        <EnsembleInspector
-          key={selectedEnsemble.id}
-          ensemble={selectedEnsemble}
-          members={ensembleMembers}
-          visibleIds={visibleIds}
-          place={place}
+      {(selectedEnsemble || musician || instrument) && (
+        <InspectorShell
+          {...(selectedEnsemble
+            ? {
+                label: "Seçili grup",
+                caption: "GRUP / PROJE",
+                contentKey: `g:${selectedEnsemble.id}`,
+              }
+            : musician
+              ? {
+                  label: "Seçili müzisyen",
+                  caption: "MÜZİSYEN",
+                  contentKey: `m:${musician.id}`,
+                }
+              : {
+                  label: "Vurgulanan enstrüman",
+                  caption: "ENSTRÜMAN",
+                  contentKey: `i:${instrument}`,
+                })}
+          closeLabel={
+            selectedEnsemble || musician
+              ? "Seçimi kaldır"
+              : "Vurgulamayı kaldır"
+          }
           nav={inspectorNav}
-          onClose={() => navigate(null)}
-          onFrame={() => network.current?.frameGroup()}
-          onRevealAll={() => setMinConcerts(null)}
-          actions={actions}
-        />
-      ) : musician ? (
-        <MusicianInspector
-          key={musician.id}
-          musician={musician}
-          concerts={counts[musician.id] ?? 0}
-          collaborators={collaborators}
-          ensembles={musicianEnsembles}
-          byId={byId}
-          projects={projects ? "ready" : projectError ? "error" : "loading"}
-          onRetryProjects={() => setProjectAttempt((n) => n + 1)}
-          nav={inspectorNav}
-          onClose={() => navigate(null)}
-          actions={actions}
-        />
-      ) : instrument ? (
-        <InstrumentInspector
-          group={instrument}
-          musicians={highlightedMusicians}
-          counts={counts}
-          place={place}
-          nav={inspectorNav}
-          onClose={() => setInstrument("")}
-          actions={actions}
-        />
-      ) : null}
+          onClose={() =>
+            selectedEnsemble || musician ? navigate(null) : setInstrument("")
+          }
+        >
+          {selectedEnsemble ? (
+            <EnsembleInspector
+              key={selectedEnsemble.id}
+              ensemble={selectedEnsemble}
+              members={ensembleMembers}
+              visibleIds={visibleIds}
+              place={place}
+              onFrame={() => network.current?.frameGroup()}
+              onRevealAll={() => setMinConcerts(null)}
+              actions={actions}
+            />
+          ) : musician ? (
+            <MusicianInspector
+              key={musician.id}
+              musician={musician}
+              concerts={counts[musician.id] ?? 0}
+              collaborators={collaborators}
+              ensembles={musicianEnsembles}
+              byId={byId}
+              projects={projects ? "ready" : projectError ? "error" : "loading"}
+              onRetryProjects={() => setProjectAttempt((n) => n + 1)}
+              actions={actions}
+            />
+          ) : (
+            <InstrumentInspector
+              group={instrument}
+              musicians={highlightedMusicians}
+              counts={counts}
+              place={place}
+              actions={actions}
+            />
+          )}
+        </InspectorShell>
+      )}
 
       {!graph.nodes.length && (
         <div className="empty-state surface" role="status">
