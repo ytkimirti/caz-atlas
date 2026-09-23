@@ -1,13 +1,16 @@
-import {
-  forceCenter,
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-} from "d3-force";
 import { UndirectedGraph } from "graphology";
 import { computeCommunityLayout } from "./community-layout";
 import { layoutLinks } from "./layout-links";
+import { separate, simulateLocal } from "./local-force";
+const D3_GRAVITY = 0.02;
+// Final clearance pass; stops early once no markers intersect.
+const COLLISION_PASSES = 400;
+// Large components start FA2 and ngraph from a short d3-style layout, so a
+// few hundred milliseconds of Barnes-Hut replace most of their iterations.
+const SEED_ABOVE = 400;
+const SEED_TICKS = 80;
+const FORCEATLAS2_ITERATIONS = 60;
+const NGRAPH_STEPS = 0.5;
 export { layoutLinks } from "./layout-links";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import createGraph from "ngraph.graph";
@@ -46,31 +49,39 @@ function simulate(
 ) {
   if (nodes.length < 2) return;
   const iterations = nodes.length > 5000 ? 200 : 320;
+  // d3-force semantics (link, many-body, weak centering) on typed arrays.
+  const d3Layout = (ticks: number) => {
+    const index = new Map(nodes.map((n, i) => [n.id, i]));
+    const xs = Float64Array.from(nodes, (n) => n.x),
+      ys = Float64Array.from(nodes, (n) => n.y);
+    simulateLocal(
+      xs,
+      ys,
+      edges.map((e) => [index.get(e.source)!, index.get(e.target)!, e.weight]),
+      {
+        distance: () => 65,
+        charge: -180 * spacing,
+        gravity: D3_GRAVITY,
+        ticks,
+      },
+    );
+    separate(xs, ys, new Float64Array(nodes.length).fill(12 * spacing), 20);
+    nodes.forEach((n, i) => {
+      n.x = xs[i];
+      n.y = ys[i];
+    });
+  };
+  const seeded = !spatial && nodes.length > SEED_ABOVE;
+  if (seeded && engine !== "d3") d3Layout(SEED_TICKS);
   if (!spatial && engine === "d3") {
-    const simulation = forceSimulation(nodes)
-      .force(
-        "link",
-        forceLink<Particle, Edge>(edges.map((e) => ({ ...e })))
-          .id((n) => n.id)
-          .distance(65),
-      )
-      .force(
-        "charge",
-        forceManyBody<Particle>()
-          .strength(-180 * spacing)
-          .theta(0.9),
-      )
-      .force("center", forceCenter(0, 0))
-      .force("collision", forceCollide<Particle>(12 * spacing).iterations(2))
-      .stop();
-    simulation.tick(iterations);
+    d3Layout(iterations);
   } else if (!spatial && engine === "forceatlas2") {
     const graph = new UndirectedGraph();
     for (const n of nodes) graph.addNode(n.id, { x: n.x, y: n.y, size: 3 });
     for (const e of edges)
       graph.mergeEdge(e.source, e.target, { weight: Math.log2(1 + e.weight) });
     const positions = forceAtlas2(graph, {
-      iterations,
+      iterations: seeded ? FORCEATLAS2_ITERATIONS : iterations,
       settings: {
         ...forceAtlas2.inferSettings(graph),
         linLogMode: true,
@@ -79,6 +90,8 @@ function simulate(
         gravity: 0.6,
         strongGravityMode: false,
         barnesHutOptimize: nodes.length > 300,
+        // Gephi's default; graphology's 0.5 is several times slower.
+        barnesHutTheta: 1.2,
         slowDown: 5,
         edgeWeightInfluence: 0.5,
       },
@@ -99,7 +112,8 @@ function simulate(
     });
     try {
       for (const n of nodes) layout.setNodePosition(n.id, n.x, n.y, n.z ?? 0);
-      for (let i = 0; i < iterations * 2; i++) if (layout.step()) break;
+      for (let i = 0; i < iterations * (seeded ? NGRAPH_STEPS : 2); i++)
+        if (layout.step()) break;
       for (const n of nodes) {
         const p = layout.getNodePosition(n.id);
         n.x = p.x;
@@ -151,16 +165,19 @@ function simulate(
     n.vy = 0;
   }
   if (spatial) return;
-  const collision = forceSimulation(nodes)
-    .velocityDecay(0.6)
-    .force(
-      "collision",
-      forceCollide<Particle>(
-        (n) => (8 + Math.log2(1 + n.count) * 2) * spacing,
-      ).iterations(4),
-    )
-    .stop();
-  collision.tick(80);
+  const xs = Float64Array.from(nodes, (n) => n.x),
+    ys = Float64Array.from(nodes, (n) => n.y);
+  separate(
+    xs,
+    ys,
+    Float64Array.from(nodes, (n) => (8 + Math.log2(1 + n.count) * 2) * spacing),
+    COLLISION_PASSES,
+    1,
+  );
+  nodes.forEach((n, i) => {
+    n.x = xs[i];
+    n.y = ys[i];
+  });
 }
 
 export function computeLayout(request: LayoutRequest): Position[] {

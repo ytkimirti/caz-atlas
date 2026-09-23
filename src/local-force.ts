@@ -240,34 +240,44 @@ export function separate(
   y: Float64Array,
   radius: Float64Array,
   iterations = 60,
+  stiffness = 0.5,
 ) {
   const n = x.length;
   if (n < 2) return;
   let maxRadius = 0;
   for (let i = 0; i < n; i++) maxRadius = Math.max(maxRadius, radius[i]);
   const size = maxRadius * 2;
-  const head = new Map<number, number>();
+  // Hashed uniform grid in typed arrays. Each point remembers its cell so a
+  // bucket shared by two cells never yields a pair twice.
+  let buckets = 1;
+  while (buckets < n * 2) buckets <<= 1;
+  const mask = buckets - 1;
+  const head = new Int32Array(buckets);
   const next = new Int32Array(n);
-  const key = (cx: number, cy: number) => cx * 73856093 + cy * 19349663;
+  const cellX = new Int32Array(n),
+    cellY = new Int32Array(n);
+  const hash = (cx: number, cy: number) =>
+    (Math.imul(cx, 73856093) ^ Math.imul(cy, 19349663)) & mask;
   for (let iteration = 0; iteration < iterations; iteration++) {
-    head.clear();
-    for (let i = 0; i < n; i++) {
-      const k = key(Math.floor(x[i] / size), Math.floor(y[i] / size));
-      next[i] = head.get(k) ?? -1;
-      head.set(k, i);
-    }
-    let moved = false;
+    head.fill(-1);
     for (let i = 0; i < n; i++) {
       const cx = Math.floor(x[i] / size),
         cy = Math.floor(y[i] / size);
+      cellX[i] = cx;
+      cellY[i] = cy;
+      const k = hash(cx, cy);
+      next[i] = head[k];
+      head[k] = i;
+    }
+    let moved = false;
+    for (let i = 0; i < n; i++) {
+      const cx = cellX[i],
+        cy = cellY[i];
       for (let dx = -1; dx <= 1; dx++)
         for (let dy = -1; dy <= 1; dy++)
-          for (
-            let j = head.get(key(cx + dx, cy + dy)) ?? -1;
-            j >= 0;
-            j = next[j]
-          ) {
-            if (j <= i) continue;
+          for (let j = head[hash(cx + dx, cy + dy)]; j >= 0; j = next[j]) {
+            if (j <= i || cellX[j] !== cx + dx || cellY[j] !== cy + dy)
+              continue;
             const r = radius[i] + radius[j];
             let px = x[j] - x[i],
               py = y[j] - y[i];
@@ -280,7 +290,7 @@ export function separate(
             }
             const d = Math.sqrt(d2);
             // Larger circles move less, as in d3's forceCollide.
-            const push = ((r - d) / d) * 0.5,
+            const push = ((r - d) / d) * stiffness,
               share =
                 (radius[i] * radius[i]) /
                 (radius[i] * radius[i] + radius[j] * radius[j]);
