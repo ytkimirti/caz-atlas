@@ -69,7 +69,7 @@ try {
       exact: true,
     });
     await expect(panel.locator("h2")).toHaveText(ensemble.name);
-    await expect(panel.locator(".collaborators > button")).toHaveCount(
+    await expect(panel.locator(".roster-rows > button")).toHaveCount(
       Object.keys(ensemble.musicians).length,
     );
     expect(new URL(page.url()).searchParams.get("g")).toBe(ensemble.id);
@@ -88,8 +88,8 @@ try {
     });
     await page.reload();
     await expect(panel.locator("h2")).toHaveText(ensemble.name);
-    const first = panel.locator(".collaborators > button").first();
-    const name = await first.locator("span").textContent();
+    const first = panel.locator(".roster-rows > button").first();
+    const name = await first.locator(".row-name").textContent();
     await first.click();
     await expect(page.locator(".selection-panel h2")).toHaveText(name!);
     expect(new URL(page.url()).searchParams.has("g")).toBe(false);
@@ -113,7 +113,7 @@ try {
     { timeout: 45000 },
   );
   await spatial
-    .getByRole("button", { name: "Tüm kadroyu haritada göster" })
+    .getByRole("button", { name: /^Gizli .* kişiyi göster$/ })
     .click();
   await expect(spatial.locator("canvas")).toHaveAttribute(
     "data-layout",

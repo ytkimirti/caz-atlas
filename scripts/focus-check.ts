@@ -62,10 +62,10 @@ async function centered(page: Page) {
     expect(x).toBeLessThan(bounds!.x - 20);
     expect(x).toBeGreaterThan(280);
   } else {
-    const instrument = await page.locator(".instrument-explorer").boundingBox();
-    expect(y).toBeGreaterThan(instrument!.y + instrument!.height);
+    const header = await page.locator(".app-header").boundingBox();
+    expect(y).toBeGreaterThan(header!.y + header!.height);
     expect(y).toBeLessThan(bounds!.y);
-    expect(bounds!.y - instrument!.y - instrument!.height).toBeGreaterThan(200);
+    expect(bounds!.y - header!.y - header!.height).toBeGreaterThan(200);
   }
   return { id, x, y, positions };
 }
@@ -102,7 +102,7 @@ try {
   const keyed = await centered(page);
   expect(keyed.x).toBeCloseTo(first.x, 3);
   expect(keyed.y).toBeCloseTo(first.y, 3);
-  await page.locator(".collaborators > button").first().click();
+  await page.locator(".collaborator-rows > button").first().click();
   await settled(page);
   expect((await centered(page)).id).not.toBe(first.id);
   // Click a projected collaborator directly, then verify the camera follows it.

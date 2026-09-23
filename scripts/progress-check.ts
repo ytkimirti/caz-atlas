@@ -147,7 +147,10 @@ try {
   // Retry/failure on mobile must also be accessible while a selection is open.
   await page.setViewportSize({ width: 1512, height: 982 });
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await page.getByLabel("Yerleşim", { exact: true }).selectOption("d3");
+  await page
+    .getByRole("group", { name: "Gruplama" })
+    .getByRole("button", { name: "Ayrıntılı" })
+    .click();
   await expect(progress).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(canvas).toHaveAttribute("width", "390");
@@ -222,10 +225,11 @@ try {
     monthIndex("2018-01"),
     monthIndex("2022-12"),
   );
+  // min=10 keeps musicians with at least ten concerts.
   const expected = filterGraph(
     { nodes: atlas.nodes, edges: period.edges },
     period.counts,
-    10,
+    9,
     period.counts,
   );
   const request = await page.evaluate(

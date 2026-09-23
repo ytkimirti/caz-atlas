@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
   ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
   Compass,
   Pause,
   Play,
@@ -27,6 +29,8 @@ interface Props {
   calculating: boolean;
   playing: boolean;
   livePhysics: boolean;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   onExperienceChange: (live: boolean) => void;
   onPlayingChange: (playing: boolean) => void;
   onRange: (range: DateRange) => void;
@@ -78,6 +82,8 @@ export default function Timeline({
   calculating,
   playing,
   livePhysics,
+  collapsed,
+  onCollapsedChange,
   onExperienceChange,
   onPlayingChange: setPlaying,
   onRange,
@@ -86,6 +92,14 @@ export default function Timeline({
   const [speed, setSpeed] = useState(1);
   const [hover, setHover] = useState<number | null>(null);
   const track = useRef<HTMLDivElement>(null);
+  // Collapsing swaps the toggle for its counterpart; keep keyboard focus on it.
+  const toggle = useRef<HTMLButtonElement>(null);
+  const refocusToggle = useRef(false);
+  useEffect(() => {
+    if (!refocusToggle.current) return;
+    refocusToggle.current = false;
+    toggle.current?.focus();
+  }, [collapsed]);
   const drag = useRef<{
     kind: "start" | "end" | "cursor" | "range";
     month: number;
@@ -173,6 +187,73 @@ export default function Timeline({
   const ticks = Array.from({ length: 8 }, (_, i) =>
     Math.round(bounds[0] + (span * i) / 7),
   );
+  const playButton = livePhysics && (
+    <button
+      className="timeline-play"
+      aria-label={playing ? "Tarihi duraklat" : "Tarihi oynat"}
+      title={
+        playing
+          ? "Tarih akışını duraklat; fizik çalışmaya devam eder"
+          : "Tarihi ilerlet; fizik her zaman çalışır"
+      }
+      aria-pressed={playing}
+      disabled={range[0] === range[1]}
+      onClick={() => {
+        if (!playing && cursor >= range[1])
+          onCursor(Math.min(replayFrom, range[1] - 1));
+        setPlaying(!playing);
+      }}
+    >
+      {playing ? (
+        <Pause size={19} fill="currentColor" />
+      ) : (
+        <Play size={19} fill="currentColor" />
+      )}
+    </button>
+  );
+  const stats = (
+    <div className="timeline-stats">
+      <span>
+        <strong>{number(musicians)}</strong> müzisyen
+      </span>
+      <span>
+        <strong>{number(edges)}</strong> bağ
+      </span>
+      <span title="Seçilen mekan ve tarihlerde arşivlenen konserler">
+        <strong>{number(concerts)}</strong> konser
+      </span>
+    </div>
+  );
+  const allDates = range[0] === bounds[0] && range[1] === bounds[1];
+  if (collapsed)
+    return (
+      <section
+        className={`timeline is-collapsed ${playing ? "is-playing" : ""}`}
+        aria-label="Zaman çizelgesi"
+        data-experience={livePhysics ? "live" : "explore"}
+      >
+        <button
+          ref={toggle}
+          className="timeline-expand"
+          aria-expanded="false"
+          onClick={() => {
+            refocusToggle.current = true;
+            onCollapsedChange(false);
+          }}
+        >
+          <ChevronUp size={15} aria-hidden="true" />
+          <span className="timeline-expand-label">Zaman</span>
+          <strong>
+            {allDates && cursor === range[1]
+              ? `Tüm arşiv · ${Math.floor(bounds[0] / 12)}–${Math.floor(bounds[1] / 12)}`
+              : `${monthLabel(range[0])} – ${monthLabel(cursor)}`}
+          </strong>
+        </button>
+        {playButton}
+        {livePhysics && <span className="timeline-live-badge">Canlı</span>}
+        {stats}
+      </section>
+    );
   return (
     <section
       className={`timeline ${playing ? "is-playing" : ""}`}
@@ -208,33 +289,23 @@ export default function Timeline({
               : "Fizik canlı · Tarih sabit"
             : "Sabit yerleşim · Bir dönem seç, bağlantıları keşfet"}
         </span>
+        <button
+          className="icon-button timeline-collapse"
+          aria-label="Zaman çizelgesini gizle"
+          title="Zaman çizelgesini gizle"
+          ref={toggle}
+          aria-expanded="true"
+          onClick={() => {
+            refocusToggle.current = true;
+            onCollapsedChange(true);
+          }}
+        >
+          <ChevronDown size={16} />
+        </button>
       </div>
       <div className="timeline-main">
         <div className="timeline-transport">
-          {livePhysics ? (
-            <button
-              className="timeline-play"
-              aria-label={playing ? "Tarihi duraklat" : "Tarihi oynat"}
-              title={
-                playing
-                  ? "Tarih akışını duraklat; fizik çalışmaya devam eder"
-                  : "Tarihi ilerlet; fizik her zaman çalışır"
-              }
-              aria-pressed={playing}
-              disabled={range[0] === range[1]}
-              onClick={() => {
-                if (!playing && cursor >= range[1])
-                  onCursor(Math.min(replayFrom, range[1] - 1));
-                setPlaying(!playing);
-              }}
-            >
-              {playing ? (
-                <Pause size={19} fill="currentColor" />
-              ) : (
-                <Play size={19} fill="currentColor" />
-              )}
-            </button>
-          ) : (
+          {playButton || (
             <span className="timeline-static-icon" aria-hidden="true">
               <Compass size={20} />
             </span>
@@ -429,17 +500,7 @@ export default function Timeline({
             <RotateCcw size={11} /> Tümü
           </button>
         </div>
-        <div className="timeline-stats">
-          <span>
-            <strong>{number(musicians)}</strong> müzisyen
-          </span>
-          <span>
-            <strong>{number(edges)}</strong> bağ
-          </span>
-          <span title="Seçilen mekan ve tarihlerde arşivlenen konserler">
-            <strong>{number(concerts)}</strong> konser
-          </span>
-        </div>
+        {stats}
         <a
           className="timeline-source"
           href="https://bizimcaz.com"

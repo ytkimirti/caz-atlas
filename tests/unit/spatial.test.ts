@@ -10,7 +10,6 @@ const request = {
     target: (id + 1) % 16,
     weight: 2,
   })),
-  engine: "communities" as const,
   mode: "3d" as const,
   spacing: 1,
 };
@@ -50,7 +49,7 @@ test("3D handles empty, single and isolated graphs", () => {
   }
 });
 
-test("spacing expands the 3D graph and switching back retains the 2D engine", () => {
+test("spacing expands the 3D graph and switching back returns to the 2D map", () => {
   const tight = sceneBounds(computeLayout({ ...request, spacing: 0.7 }));
   const loose = sceneBounds(computeLayout({ ...request, spacing: 1.6 }));
   expect(loose.radius).toBeGreaterThan(tight.radius);

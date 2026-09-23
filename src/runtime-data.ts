@@ -116,7 +116,6 @@ export function defaultLayoutRequest(
       count: concerts.counts[n.id] || 0,
     })),
     edges: graph.edges,
-    engine: "communities",
     mode: "2d",
     spacing: 1,
     resolution: 1.5,

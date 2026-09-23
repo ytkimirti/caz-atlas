@@ -51,12 +51,13 @@ try {
   await choose(page, "Adem Gülşen");
   await markerVisible(page);
   const retry = page.getByRole("button", {
-    name: "Grup bilgileri yüklenemedi. Tekrar dene",
+    name: "Gruplar yüklenemedi. Tekrar dene",
   });
   await expect(retry).toBeVisible();
   await page.unroute("**/data/projects.json");
   await retry.click();
-  await expect(page.locator(".musician-ensembles")).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  await expect(page.getByText("Gruplar yükleniyor…")).toHaveCount(0);
   await markerVisible(page);
   for (const name of [
     "Ahmet Berker",
@@ -105,7 +106,7 @@ try {
   await page.locator(".panel-backdrop").click({ position: { x: 2, y: 2 } });
   await expect(page.locator("#filters")).toHaveCount(0);
   await page.setViewportSize({ width: 1512, height: 982 });
-  for (const name of ["Filtreler", "Görünüm", "Harita rehberi"]) {
+  for (const name of ["Filtreler", "Görünüm"]) {
     await page.getByRole("button", { name, exact: true }).click();
     await page.keyboard.press("Escape");
     await expect(page.locator(".selection-panel h2")).toHaveText("Ateş Tezer");

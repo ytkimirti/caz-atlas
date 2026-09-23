@@ -38,7 +38,9 @@ try {
   await expect(canvas).toHaveAttribute("data-visible-nodes", count!);
   await expect(canvas).toHaveAttribute("data-visible-edges", edges!);
   await expect(page).toHaveURL(/view=3d/);
-  await expect(page.locator("#layout-engine")).toHaveCount(0);
+  await page.getByRole("button", { name: "Görünüm", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Gruplama" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Görünümü kapat" }).click();
   const initialPosition = await canvas.getAttribute("data-selected-position");
   const initialRotation = await canvas.getAttribute("data-rotation");
   await page.mouse.move(750, 550);
@@ -71,7 +73,7 @@ try {
   await expect(canvas).not.toHaveAttribute("data-rotation", rotation!);
   await page.getByRole("button", { name: "Görünümü sıfırla" }).click();
   await expect(canvas).toHaveAttribute("data-rotation", initialRotation!);
-  await page.locator(".collaborators > button").first().hover();
+  await page.locator(".collaborator-rows > button").first().hover();
   await expect
     .poll(
       async () => (await canvas.getAttribute("data-path"))!.split(",").length,
@@ -92,26 +94,25 @@ try {
   ).toHaveAttribute("aria-pressed", "true");
   await expect(canvas).toHaveAttribute("data-focus", selected!);
   await page
-    .getByRole("combobox", { name: "Enstrüman vurgula" })
-    .selectOption("Brass");
+    .getByRole("navigation", { name: "Enstrüman renkleri" })
+    .getByRole("button", { name: /Bakır üflemeli/ })
+    .click();
   await expect(canvas).not.toHaveAttribute("data-highlighted", "");
   await expect(canvas).toHaveAttribute("data-visible-nodes", count!);
   await page.getByRole("button", { name: "2D", exact: true }).click();
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(page.locator("#layout-engine")).toHaveValue("communities");
+  await expect(page.getByRole("group", { name: "Gruplama" })).toBeVisible();
   await page.getByRole("button", { name: "Görünümü kapat" }).click();
   await expect(canvas).toHaveAttribute("data-mode", "2d");
   await expect(canvas).toHaveAttribute("data-focus", selected!);
   await expect(page).not.toHaveURL(/view=3d/);
   // Empty filtered graphs and subsequent recovery work in spatial mode.
-  await page.getByRole("button", { name: "3D", exact: true }).click();
-  await ready();
-  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
-  await page.locator("#concert-min").fill("999999");
+  await page.goto(`${base}/?view=3d&min=999999`);
   await ready();
   await expect(canvas).toHaveAttribute("data-visible-nodes", "0");
-  await page.locator("#concert-min").fill("50");
+  await page.getByRole("button", { name: "Filtreler", exact: true }).click();
+  await page.getByRole("button", { name: "En az 50 konser" }).click();
   await ready();
   await expect(canvas).not.toHaveAttribute("data-visible-nodes", "0");
   await page.getByRole("button", { name: "Filtreleri kapat" }).click();
@@ -125,7 +126,7 @@ try {
   await page.getByRole("button", { name: "2D", exact: true }).click();
   await page.getByRole("button", { name: "3D", exact: true }).click();
   await ready();
-  await expect(canvas).toHaveAttribute("data-engine", "ngraph");
+  await expect(canvas).toHaveAttribute("data-mode", "3d");
   // Touch orbit and pinch, with the mode switch still available on a phone.
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },

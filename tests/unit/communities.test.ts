@@ -24,7 +24,7 @@ function chain(sizes: number[], offset = 0) {
   return { nodes, edges, groups };
 }
 const fixture = chain([7, 9, 11, 8]);
-const request = { ...fixture, engine: "communities" as const, spacing: 1 };
+const request = { ...fixture, spacing: 1 };
 
 test("unequal planted communities stay distinct and adjacent groups are closer", () => {
   const result = computeCommunityLayout(request);
@@ -99,7 +99,6 @@ test("dominant group and many isolates retain every node without overlap", () =>
   );
   const result = computeCommunityLayout({
     ...fixture,
-    engine: "communities",
     spacing: 1,
   });
   expect(new Set(result.positions.map((p) => p.id)).size).toBe(160);

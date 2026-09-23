@@ -142,18 +142,13 @@ try {
         const panel = document
           .querySelector(".selection-panel")!
           .getBoundingClientRect();
-        const instrument = document
-          .querySelector(".instrument-explorer")!
-          .getBoundingClientRect();
         const timeline = document
           .querySelector(".timeline")!
           .getBoundingClientRect();
-        const top = Math.max(
+        const top =
           (parseFloat(
             getComputedStyle(canvas).getPropertyValue("--header-height"),
-          ) || 132) + 16,
-          instrument.bottom + 12,
-        );
+          ) || 132) + 16;
         const bottom = Math.min(
           innerHeight - 30,
           timeline.top - 16,

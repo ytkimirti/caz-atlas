@@ -9,7 +9,6 @@ import {
 } from "d3-force";
 import { computeLayout } from "../src/layout";
 import type { Position } from "../src/layout";
-import { layoutEngines } from "../src/layout-options";
 import { filterGraph } from "../src/graph";
 import type { Atlas, ConcertIndex, Edge } from "../src/types";
 const atlas: Atlas = await Bun.file(
@@ -120,16 +119,12 @@ function metrics(positions: Position[], aspect = 1) {
     zoom: +zoom.toFixed(3),
   };
 }
-for (const engine of ["original", ...layoutEngines.map((e) => e.id)] as const) {
-  const only = process.argv
-    .find((arg) => arg.startsWith("--engine="))
-    ?.split("=")[1];
-  if (only && engine !== "original" && engine !== only) continue;
+for (const engine of ["original", "communities"] as const) {
   const started = performance.now();
   const positions =
     engine === "original"
       ? baseline()
-      : computeLayout({ nodes, edges: graph.edges, engine, spacing: 1 });
+      : computeLayout({ nodes, edges: graph.edges, spacing: 1 });
   const ms = Math.round(performance.now() - started);
   console.log(
     JSON.stringify({

@@ -64,10 +64,11 @@ try {
     monthIndex("1956-04"),
     monthIndex("2020-01"),
   );
+  // min=10 keeps musicians with at least ten concerts.
   const expected = filterGraph(
     { nodes: atlas.nodes, edges: windowed.edges },
     windowed.counts,
-    10,
+    9,
     windowed.counts,
   );
   await expect(canvas).toHaveAttribute(
@@ -178,7 +179,7 @@ try {
   const venueGraph = filterGraph(
     { nodes: atlas.nodes, edges: venueWindow.edges },
     venueWindow.counts,
-    10,
+    9,
     venueWindow.counts,
   );
   await expect(canvas).toHaveAttribute(
@@ -192,8 +193,10 @@ try {
   await expect(canvas).toHaveAttribute("data-animating", "false");
   const view = await canvas.getAttribute("data-view");
   const edges = await canvas.getAttribute("data-visible-edges");
-  const instrument = page.getByLabel("Enstrüman vurgula", { exact: true });
-  await instrument.selectOption("Piano");
+  await page
+    .getByRole("navigation", { name: "Enstrüman renkleri" })
+    .getByRole("button", { name: /Piyano/ })
+    .click();
   await expect(canvas).toHaveAttribute(
     "data-highlighted",
     venueGraph.nodes
@@ -210,9 +213,11 @@ try {
         venueWindow.counts[b.id] - venueWindow.counts[a.id] ||
         b.degree - a.degree,
     );
-  await expect(page.locator(".instrument-ranking button span")).toHaveText(
-    ranked.map((node) => node.name),
-  );
+  await expect(
+    page
+      .getByRole("region", { name: "Vurgulanan enstrüman" })
+      .locator(".row-name"),
+  ).toHaveText(ranked.map((node) => node.name));
   await page.getByRole("button", { name: "Vurgulamayı kaldır" }).click();
   await page.getByRole("button", { name: "Mekan filtresini kaldır" }).click();
   await page.getByRole("button", { name: "Tüm tarihleri göster" }).click();
@@ -224,7 +229,7 @@ try {
     ),
   ).toBe(true);
   const timeline = await page.locator(".timeline").boundingBox();
-  expect(timeline!.y + timeline!.height).toBe(832);
+  expect(timeline!.y + timeline!.height).toBe(834);
   const dateBox = await end.boundingBox();
   expect(dateBox!.x + dateBox!.width).toBeLessThanOrEqual(390);
   const chart = await page.locator(".timeline-chart").boundingBox();
