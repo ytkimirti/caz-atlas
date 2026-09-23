@@ -62,8 +62,7 @@ function Violin(props: IconProps) {
 
 const icons: Record<string, (props: IconProps) => React.ReactNode> = {
   Piano: (props) => <Piano {...props} />,
-  Brass: Trumpet,
-  Woodwinds: Trumpet,
+  Winds: Trumpet,
   Guitar: (props) => <Guitar {...props} />,
   Bass: DoubleBass,
   Drums: (props) => <Drum {...props} />,
@@ -71,7 +70,6 @@ const icons: Record<string, (props: IconProps) => React.ReactNode> = {
   Strings: Violin,
 };
 
-// Instrument families share one symbol; the color tells brass from woodwinds.
 export default function InstrumentIcon({
   group,
   size = 16,

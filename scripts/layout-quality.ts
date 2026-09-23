@@ -32,7 +32,7 @@ const positions = computeLayout({
   nodes,
   edges: graph.edges,
   spacing: Number(arg("spacing") ?? 1),
-  resolution: Number(arg("resolution") ?? 1.5),
+  resolution: Number(arg("resolution") ?? 3),
 });
 const ms = Math.round(performance.now() - started);
 

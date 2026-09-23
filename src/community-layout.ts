@@ -13,6 +13,7 @@ import louvain from "graphology-communities-louvain";
 import { layoutLinks } from "./layout-links";
 import { separate, simulateLocal } from "./local-force";
 import type { LayoutNode, LayoutRequest, Position } from "./layout";
+import { defaultResolution } from "./layout-options";
 import type { Edge } from "./types";
 
 type Member = LayoutNode & Position;
@@ -76,7 +77,7 @@ export function computeCommunityLayout(
   }
   const labels = louvain(graph, {
     randomWalk: false,
-    resolution: request.resolution ?? 1.5,
+    resolution: request.resolution ?? defaultResolution,
   });
   const membership = new Map<number, Community>();
   const groups: Community[] = [];

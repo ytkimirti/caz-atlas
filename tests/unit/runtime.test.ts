@@ -8,6 +8,7 @@ import {
   seedDefaultLayout,
   unpackRuntime,
 } from "../../src/runtime-data";
+import { groupId } from "../../src/types";
 import type { Atlas, ConcertIndex } from "../../src/types";
 
 test("browser assets preserve every runtime field, concert, venue and project", async () => {
@@ -25,7 +26,7 @@ test("browser assets preserve every runtime field, concert, venue and project", 
       id,
       key,
       name,
-      group,
+      group: groupId(group),
       degree,
       x,
       y,

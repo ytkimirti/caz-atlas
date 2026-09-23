@@ -1,4 +1,5 @@
 import type { LayoutRequest, Position } from "./layout";
+import { defaultResolution } from "./layout-options";
 
 // Bump when layout output changes so shipped precomputed positions are ignored.
 export const LAYOUT_VERSION = 4;
@@ -24,7 +25,7 @@ export function layoutKey(request: LayoutRequest) {
     LAYOUT_VERSION,
     request.mode ?? "2d",
     request.spacing,
-    request.resolution ?? 1.5,
+    request.resolution ?? defaultResolution,
     request.nodes.length,
     request.edges.length,
     (hash >>> 0).toString(36),

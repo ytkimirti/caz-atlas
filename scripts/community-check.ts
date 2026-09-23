@@ -19,30 +19,30 @@ try {
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   const visibleEdges = await canvas.getAttribute("data-visible-edges");
-  await page.screenshot({ path: ".cache/communities-balanced.png" });
-  for (const value of ["0.8", "3", "1.5"] as const) {
+  await page.screenshot({ path: ".cache/communities-default.png" });
+  for (const value of ["0.8", "1.5", "3"] as const) {
     await level(levels[value]).click();
     await ready();
     await expect(canvas).toHaveAttribute("data-visible-edges", visibleEdges!);
     await page.screenshot({ path: `.cache/communities-${value}.png` });
   }
-  await level("Ayrıntılı").click();
+  await level("Dengeli").click();
   await ready();
-  await expect(page).toHaveURL(/resolution=3/);
+  await expect(page).toHaveURL(/resolution=1\.5/);
   await page.reload();
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(level("Ayrıntılı")).toHaveAttribute("aria-pressed", "true");
+  await expect(level("Dengeli")).toHaveAttribute("aria-pressed", "true");
   // 3D has no community detail; returning to 2D restores it.
   await page.getByRole("button", { name: "3D", exact: true }).click();
   await ready();
   await expect(detail).toHaveCount(0);
   await page.getByRole("button", { name: "2D", exact: true }).click();
   await ready();
-  await expect(level("Ayrıntılı")).toHaveAttribute("aria-pressed", "true");
+  await expect(level("Dengeli")).toHaveAttribute("aria-pressed", "true");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(detail).toBeVisible();
-  await level("Dengeli").click();
+  await level("Ayrıntılı").click();
   await ready();
   await page.screenshot({ path: ".cache/communities-mobile.png" });
   expect(
@@ -57,7 +57,7 @@ try {
   await page.goto(`${base}?resolution=NaN`);
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await expect(level("Dengeli")).toHaveAttribute("aria-pressed", "true");
+  await expect(level("Ayrıntılı")).toHaveAttribute("aria-pressed", "true");
   expect(errors).toEqual([]);
   console.log(
     "Communities verified: all detail levels, unchanged visible ties, URL reload, 3D round trip, mobile, full archive, invalid URL recovery.",

@@ -6,9 +6,11 @@ import type {
   GraphMusician,
   Venue,
 } from "./types";
+import { groupId } from "./types";
 import { filterGraph } from "./graph";
 import type { LayoutRequest, Position } from "./layout";
 import { cacheLayout, layoutKey } from "./layout-cache";
+import { defaultResolution } from "./layout-options";
 
 export type RuntimeConcerts = Omit<ConcertIndex, "ensembles" | "venues"> & {
   venues: Omit<Venue, "ensembles">[];
@@ -75,7 +77,7 @@ export function packRuntime(
         id,
         key,
         name,
-        group,
+        groupId(group),
         degree,
         p ? round(p.x) : x,
         p ? round(p.y) : y,
@@ -118,7 +120,7 @@ export function defaultLayoutRequest(
     edges: graph.edges,
     mode: "2d",
     spacing: 1,
-    resolution: 1.5,
+    resolution: defaultResolution,
   };
 }
 // Shipped positions make the first view ready without a layout worker.

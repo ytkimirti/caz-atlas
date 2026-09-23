@@ -149,7 +149,7 @@ try {
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
   await page
     .getByRole("group", { name: "Gruplama" })
-    .getByRole("button", { name: "Ayrıntılı" })
+    .getByRole("button", { name: "Dengeli" })
     .click();
   await expect(progress).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });

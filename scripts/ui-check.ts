@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
+import { groupId } from "../src/types";
 import type { Atlas, ConcertIndex } from "../src/types";
 import {
   adjacency,
@@ -302,11 +303,11 @@ try {
   );
   const selectedView = await snapshot();
   const selectedPosition = await canvas.getAttribute("data-selected-position");
-  await legend("Bakır üflemeli").click();
+  await legend("Üflemeli").click();
   await expect(canvas).toHaveAttribute(
     "data-highlighted",
     defaultGraph.nodes
-      .filter((node) => node.group === "Brass")
+      .filter((node) => groupId(node.group) === "Winds")
       .map((node) => node.id)
       .join(","),
   );
@@ -318,7 +319,7 @@ try {
   await expect(page.locator(".selection-panel h2")).toHaveText(pianist.name);
   await page.reload();
   await ready();
-  await expect(legend("Bakır üflemeli")).toHaveAttribute(
+  await expect(legend("Üflemeli")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -509,7 +510,7 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await legend("Bakır üflemeli").click();
+  await legend("Üflemeli").click();
   await expect(instrumentPanel).toBeVisible();
   expect(
     await page.evaluate(

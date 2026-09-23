@@ -10,6 +10,7 @@ export function parseSpacing(value: string | null): number {
 }
 export type LayoutStatus = "pending" | "ready" | "fallback";
 
+export const defaultResolution = 3;
 export const groupingOptions = [
   { value: 0.8, name: "Geniş" },
   { value: 1.5, name: "Dengeli" },
@@ -18,7 +19,7 @@ export const groupingOptions = [
 export function parseResolution(value: string | null): number {
   return (
     groupingOptions.find((option) => option.value === Number(value))?.value ??
-    1.5
+    defaultResolution
   );
 }
 

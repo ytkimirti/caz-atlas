@@ -9,7 +9,7 @@ import {
   forceCollide,
 } from "d3-force";
 import { mergeEdge, adjacency } from "../src/graph";
-import { groups } from "../src/types";
+import { groupId, groups } from "../src/types";
 import type { Atlas, Musician, Edge } from "../src/types";
 if (!Bun.argv.includes("--build")) {
   console.log(
@@ -57,7 +57,7 @@ function add(n: RawNode, ownProfile = false) {
     id: 0,
     key: n.compound_key,
     name: n.name,
-    group: n.instrument_group || existing?.group || "Others",
+    group: groupId(n.instrument_group || existing?.group || "Others"),
     city: n.city || existing?.city || "",
     status: n.status || existing?.status || "",
     degree: 0,

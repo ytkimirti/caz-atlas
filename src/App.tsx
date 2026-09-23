@@ -39,6 +39,7 @@ import {
 } from "./chronology";
 import type { DateRange } from "./chronology";
 import {
+  defaultResolution,
   groupingOptions,
   parseResolution,
   parseViewMode,
@@ -50,7 +51,7 @@ import type { NetworkHandle } from "./Network";
 import type { Ensemble, GraphMusician } from "./types";
 import { seedDefaultLayout, unpackRuntime } from "./runtime-data";
 import type { ProjectData, RuntimeData } from "./runtime-data";
-import { groupInfo, groups, normalize, number } from "./types";
+import { groupId, groupInfo, groups, normalize, number } from "./types";
 import {
   adjacency,
   filterGraph,
@@ -489,11 +490,10 @@ function AtlasApp({
   const [viewOpen, setViewOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [popoverLeft, setPopoverLeft] = useState(24);
-  const [instrument, setInstrument] = useState(
-    groups.some((g) => g.id === params.get("instrument"))
-      ? params.get("instrument")!
-      : "",
-  );
+  const [instrument, setInstrument] = useState(() => {
+    const id = groupId(params.get("instrument") ?? "");
+    return groups.some((g) => g.id === id) ? id : "";
+  });
   const [topCollaborators, setTopCollaborators] = useState<number | null>(
     [1, 3, 5, 10].includes(Number(params.get("top")))
       ? Number(params.get("top"))
@@ -765,7 +765,7 @@ function AtlasApp({
     if (topCollaborators !== null) query.set("top", String(topCollaborators));
     if (mode === "3d") query.set("view", mode);
     if (livePhysics) query.set("experience", "live");
-    if (resolution !== 1.5) query.set("resolution", String(resolution));
+    if (resolution !== defaultResolution) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
     if (ensembleSelected) query.set("g", selectedEnsembleId!);

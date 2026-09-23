@@ -24,7 +24,7 @@ function chain(sizes: number[], offset = 0) {
   return { nodes, edges, groups };
 }
 const fixture = chain([7, 9, 11, 8]);
-const request = { ...fixture, spacing: 1 };
+const request = { ...fixture, spacing: 1, resolution: 1.5 };
 
 test("unequal planted communities stay distinct and adjacent groups are closer", () => {
   const result = computeCommunityLayout(request);
@@ -143,7 +143,7 @@ for (const option of groupingOptions)
 
 test("group detail accepts only supported URL values", () => {
   for (const value of [null, "", "NaN", "-1", "Infinity", "99"])
-    expect(parseResolution(value)).toBe(1.5);
+    expect(parseResolution(value)).toBe(3);
   expect(parseResolution("0.8")).toBe(0.8);
   expect(parseResolution("3")).toBe(3);
 });

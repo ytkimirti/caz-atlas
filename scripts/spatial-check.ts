@@ -95,7 +95,7 @@ try {
   await expect(canvas).toHaveAttribute("data-focus", selected!);
   await page
     .getByRole("navigation", { name: "Enstrüman renkleri" })
-    .getByRole("button", { name: /Bakır üflemeli/ })
+    .getByRole("button", { name: /Üflemeli/ })
     .click();
   await expect(canvas).not.toHaveAttribute("data-highlighted", "");
   await expect(canvas).toHaveAttribute("data-visible-nodes", count!);

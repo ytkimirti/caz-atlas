@@ -27,7 +27,7 @@ try {
   await page.goto(`${base}?min=10`);
   await ready();
   await page.getByRole("button", { name: "Görünüm", exact: true }).click();
-  await option("Gruplama", "Ayrıntılı").click();
+  await option("Gruplama", "Dengeli").click();
   await option("Gruplama", "Geniş").click();
   await ready();
   await expect(page).toHaveURL(/resolution=0\.8/);
