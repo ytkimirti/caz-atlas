@@ -71,7 +71,23 @@ async function checkNames(limit: number, requiredId?: number) {
   return labels;
 }
 try {
+  // The first view applies no filters: every musician with a concert and every tie.
   await page.goto(base);
+  await ready();
+  const unfiltered = filterGraph(
+    { nodes: data.nodes, edges: concerts.edges },
+    concerts.counts,
+    null,
+    concerts.counts,
+  );
+  await expect(canvas).toHaveAttribute(
+    "data-visible-edges",
+    String(unfiltered.edges.length),
+  );
+  await expect(page.locator(".active-filters")).toHaveCount(0);
+  expect(new URL(page.url()).search).toBe("");
+  // The remaining checks start from the previous 10-concert, top-5 view.
+  await page.goto(`${base}?min=10&top=5`);
   await ready();
   expect(await canvas.boundingBox()).toEqual({
     x: 0,
@@ -166,7 +182,7 @@ try {
     "data-visible-edges",
     String(defaultGraph.edges.length),
   );
-  await expect(page).toHaveURL(/top=all/);
+  await expect(page).not.toHaveURL(/top=/);
   await page.reload();
   await ready();
   await expect(canvas).toHaveAttribute(

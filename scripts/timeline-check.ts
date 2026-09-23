@@ -25,7 +25,7 @@ const show = async (date: string) => {
   await scrubber.fill(String(monthIndex(date)));
 };
 try {
-  await page.goto(base);
+  await page.goto(`${base}?min=10`);
   await expect(canvas).toHaveAttribute("data-layout", "ready", {
     timeout: 45000,
   });

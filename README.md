@@ -28,8 +28,8 @@ Projeyi bağlamak gerekirse doğru Vercel hesabıyla `vercel link` çalıştır 
 
 ## Kullanım
 
-- Başlangıçta **10 konserden fazla** çalmış müzisyenler görünür. Filtreyi kaldırınca seçilen tarihlerde konser kaydı bulunan tüm isimler görünür.
-- Genel görünümde her müzisyenin **en çok birlikte çaldığı ilk 5 kişiye** bağlantısı çizilir. Kişi sayısı 1, 3, 5 veya 10 seçilebilir; Tümü bağlantı sınırını kaldırır. Bir bağın iki kişiden birinin listesine girmesi yeterlidir, bu yüzden popüler müzisyenlerin görünür bağ sayısı X'i aşabilir. Sıralama mevcut filtrelerdeki kişiler arasında, mekan seçiliyse o mekandaki ortak konser sayısıyla hesaplanır. Eşitlikler müzisyen kimliğine göre çözülür. Seçim URL'de `top` parametresinde saklanır (`all` tüm bağlar); eski `shared` parametresi yerine varsayılan ilk 5 kullanılır.
+- Başlangıçta filtre uygulanmaz: seçilen tarihlerde konser kaydı bulunan tüm müzisyenler ve tüm bağlantılar görünür. Konser eşiği ve bağlantı sınırı Filtreler panelinden eklenir.
+- Bağlantı sınırı seçilirse her müzisyenin **en çok birlikte çaldığı ilk X kişiye** bağlantısı çizilir. Kişi sayısı 1, 3, 5 veya 10 seçilebilir; Tümü (varsayılan) sınırı kaldırır. Bir bağın iki kişiden birinin listesine girmesi yeterlidir, bu yüzden popüler müzisyenlerin görünür bağ sayısı X'i aşabilir. Sıralama mevcut filtrelerdeki kişiler arasında, mekan seçiliyse o mekandaki ortak konser sayısıyla hesaplanır. Eşitlikler müzisyen kimliğine göre çözülür. Seçim URL'de `top` parametresinde saklanır; parametre yoksa tüm bağlar çizilir. Konser eşiği `min` parametresinde saklanır; eski `min=all` ve `top=all` bağlantıları filtresiz açılır.
 - Bir müzisyenin üzerine gelince filtrelenmiş graf içindeki tüm doğrudan bağları görünür. Tıklayınca seçim sabitlenir.
 - Biri seçiliyken başka bir müzisyenin üzerine gelmek aralarındaki **en az bağlantılı yolu** vurgular. Bu hesap, normalde gizlenen zayıf bağları da içerir. Yol mevcut filtrelere uyar.
 - Arama sonuçlarında ve seçili kişinin bağlantı listesinde hover veya klavye odağı da yol gösterir. Türkçe karakter kullanmadan arama yapılabilir.
@@ -44,14 +44,13 @@ Projeyi bağlamak gerekirse doğru Vercel hesabıyla `vercel link` çalıştır 
 - Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Sağ alttaki + / − ve ekrana sığdır düğmeleri de kullanılabilir. Harita rehberi renkleri ve bağlantıları açıklar; bir enstrümana tıklayarak vurgulama açılabilir. Mobilde detaylar alt panelde, filtreler ise sabit sonuç düğmesi olan kaydırılabilir panelde açılır.
 - **2D / 3D** düğmeleriyle görünümü değiştir. 3D modunda ağı sürükleyerek veya graf odaktayken ok tuşlarıyla döndür; Shift + sürükle veya Shift + ok tuşlarıyla taşı. Kaydırarak yakınlaş; dokunmatik ekranda bir parmakla döndür, iki parmakla taşı ve yakınlaş. **Görünümü sıfırla** veya `0` başlangıç açısına döner ve ağı ekrana sığdırır. Arama, seçim, en kısa yol, enstrüman vurgulama ve zaman çizelgesi iki modda da çalışır. 3D modunda bir müzisyene tıklamak veya aramadan seçmek kamerayı onun doğrudan bağlantılarına odaklar; diğer müzisyenler silikleşir. Döndürme seçilen kişinin etrafında yapılır, yakınlaşırken kişi merkezde kalır. Kamera geçişleri yumuşaktır; sürükleme bırakılınca hareket kısa sürede yavaşlar. Azaltılmış hareket tercihinde geçiş ve süzülme kapatılır. Seçimi kaldırmak genel görünüme döner; sıfırlama seçili kişinin ağını yeniden çerçeveler. Görünüm URL'de `view=3d` ile saklanır; 2D'ye dönünce önceki yerleşim motoru korunur. 3D yerleşimi ngraph ile Web Worker'da üç eksende hesaplanır; derinlik mesafeleri de coğrafya veya zaman ifade etmez.
 
-
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
 
 `⌘/Ctrl K` açık ayar panelini kapatıp aramaya odaklanır. Arama sonuçları kapalıyken kutuya yeniden tıklamak sonuçları açar; aşağı / yukarı ok ilk / son sonuçtan başlar. Arama açıkken ilk `Esc` sonuçları kapatır, sonraki `Esc` seçimi kaldırabilir.
 
 `Esc` önce açık ayar panelini veya rehberi kapatır; müzisyen seçimi korunur. Mobil ayar panelleri açıkken klavye odağı panelde kalır ve kapanınca açan düğmeye döner. 2D seçimler detay panelinin dışında görünür tutulur.
 
-Yerleşim Web Worker'da hesaplanır; motor veya filtre değişince önceki hesap iptal edilir. Topluluklar görünümü tam filtrelenmiş konser grafından bağlı gruplar bulur. Müzisyenler kendi topluluklarında yerleşir; ardından topluluklar aralarındaki ortak konserlere göre konumlanır. Her topluluğun boyutuna göre boşluk ayrılır, bağlantısız ağlar iç düzenleri korunarak dairesel biçimde yerleştirilir. Diğer motorlar güçlü ilişkilerle birlikte toplulukları birleştiren zayıf köprüleri korur. Bağlantısız kişiler ayrı alanlara yerleştirilir. Gruplar resmi müzik grupları değildir; gruplar arası uzaklık ilişki gücünü ölçmez. Çizgileri sadeleştirmek bağlantı verisini silmez. Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Mesafeler coğrafya veya zaman ifade etmez.
+Yerleşim Web Worker'da hesaplanır; motor veya filtre değişince önceki hesap iptal edilir. Varsayılan görünümün yerleşimi `data:runtime` sırasında önceden hesaplanıp `runtime.json` ile gelir, bu yüzden ilk açılışta worker çalışmaz. Son hesaplanan sekiz yerleşim bellekte tutulur; aynı filtrelere dönmek yeniden hesap gerektirmez. Topluluklar görünümü tam filtrelenmiş konser grafından bağlı gruplar bulur. Müzisyenler kendi topluluklarında yerleşir; ardından topluluklar aralarındaki ortak konserlere göre konumlanır. Her topluluğun boyutuna göre boşluk ayrılır. En büyük bağlı ağ solda durur; bağlantısız ağlar iç düzenleri korunarak yanında, ekran oranına uygun satırlar halinde dizilir. Diğer motorlar güçlü ilişkilerle birlikte toplulukları birleştiren zayıf köprüleri korur. Bağlantısız kişiler ayrı alanlara yerleştirilir. Gruplar resmi müzik grupları değildir; gruplar arası uzaklık ilişki gücünü ölçmez. Çizgileri sadeleştirmek bağlantı verisini silmez. Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Mesafeler coğrafya veya zaman ifade etmez.
 
 Motor karşılaştırması, seçim gerekçesi ve ölçümler: [yerleşim araştırması](docs/layout-research.md). Tüm arşiv ekrana sığdırıldığında yoğun grupları incelemek için yakınlaştırma veya filtreler gerekir.
 
@@ -115,7 +114,10 @@ ATLAS_TEST_URL=http://localhost:5173 bun run test:layouts
 ATLAS_TEST_URL=http://localhost:5173 bun run test:communities
 ATLAS_TEST_URL=http://localhost:5173 bun run test:progress
 bun run benchmark:layouts
+bun run scripts/layout-quality.ts [--min=N] [--engine=communities]
 ```
+
+`layout-quality`, depodaki veriyle yerleşimi hesaplar; süreyi, ekrana sığdırılmış yakınlaşmayı, işaret örtüşmelerini, en yakın komşuların gerçek iş birlikçi olma oranını (`knnPrecision`) ve bağ uzunluklarını yazar. Görsel kontrol için `.cache/quality-*.png` üretir; `--no-png` ile yalnızca ölçüm yapar.
 
 Arama performansını önceki sürümle karşılaştırmak için `bun run benchmark:search --baseline 8a22b70` kullanılır. Depodaki veriyle sonuç sırasını doğrular ve önbellek ısındıktan sonra beş adet 100 sorguluk ölçümün ortancasını raporlar. Bu ölçüm Bun içindeki arama hesabıdır; tarayıcı etkileşim süresi değildir. `test:render`, yerel geliştirme sunucusunda canlı grafın çizim süresini raporlar, sabit panellerin her karede yeniden ölçülmediğini ve 3D tekerlek yakınlaştırmasının canlı fizik tarafından geri alınmadığını doğrular.
 

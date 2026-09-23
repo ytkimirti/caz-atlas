@@ -45,7 +45,7 @@ import {
 import type { LayoutStatus } from "./layout-options";
 import type { NetworkHandle } from "./Network";
 import type { Ensemble, GraphMusician } from "./types";
-import { unpackRuntime } from "./runtime-data";
+import { seedDefaultLayout, unpackRuntime } from "./runtime-data";
 import type { ProjectData, RuntimeData } from "./runtime-data";
 import { groupInfo, groups, normalize, number } from "./types";
 import {
@@ -327,7 +327,10 @@ export default function App() {
     };
     read("/data/runtime.json")
       .then(unpackRuntime)
-      .then(setData)
+      .then((runtime) => {
+        seedDefaultLayout(runtime);
+        setData(runtime);
+      })
       .catch((e) => {
         if (e.name !== "AbortError")
           setError("Graf verisi yüklenemedi. Tekrar deneyebilirsin.");
@@ -405,13 +408,11 @@ function AtlasApp({
     setRange(next);
     setCursor(next[1]);
   }
-  const initialMin = Number(params.get("min") ?? 10);
+  const initialMin = Number(params.get("min"));
   const [minConcerts, setMinConcerts] = useState<number | null>(
-    params.get("min") === "all"
-      ? null
-      : Number.isFinite(initialMin)
-        ? Math.max(0, Math.floor(initialMin))
-        : 10,
+    params.get("min") && Number.isFinite(initialMin)
+      ? Math.max(0, Math.floor(initialMin))
+      : null,
   );
   const [venueId, setVenueId] = useState(
     concerts.venues.some((v) => v.id === params.get("venue"))
@@ -426,11 +427,9 @@ function AtlasApp({
       : "",
   );
   const [topCollaborators, setTopCollaborators] = useState<number | null>(
-    params.get("top") === "all"
-      ? null
-      : [1, 3, 5, 10].includes(Number(params.get("top")))
-        ? Number(params.get("top"))
-        : 5,
+    [1, 3, 5, 10].includes(Number(params.get("top")))
+      ? Number(params.get("top"))
+      : null,
   );
   const [mode, setMode] = useState(() => parseViewMode(params.get("view")));
   const [engine, setEngine] = useState(() => parseEngine(params.get("engine")));
@@ -651,15 +650,10 @@ function AtlasApp({
     if (range[0] !== bounds[0]) query.set("from", monthValue(range[0]));
     if (range[1] !== bounds[1]) query.set("to", monthValue(range[1]));
     if (cursor !== range[1]) query.set("at", monthValue(cursor));
-    if (minConcerts !== 10)
-      query.set("min", minConcerts === null ? "all" : String(minConcerts));
+    if (minConcerts !== null) query.set("min", String(minConcerts));
     if (venueId) query.set("venue", venueId);
     if (instrument) query.set("instrument", instrument);
-    if (topCollaborators !== 5)
-      query.set(
-        "top",
-        topCollaborators === null ? "all" : String(topCollaborators),
-      );
+    if (topCollaborators !== null) query.set("top", String(topCollaborators));
     if (mode === "3d") query.set("view", mode);
     if (livePhysics) query.set("experience", "live");
     if (engine !== DEFAULT_ENGINE) query.set("engine", engine);

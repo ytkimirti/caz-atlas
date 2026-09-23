@@ -124,12 +124,18 @@ try {
   deferred.on("request", (request) =>
     resources.push(new URL(request.url()).pathname),
   );
-  await deferred.goto(base);
+  await deferred.goto(`${base}?min=10`);
   await expect(deferred.locator("canvas")).toHaveAttribute(
     "data-layout",
     "pending",
   );
   expect(resources).not.toContain("/data/projects.json");
+  // The unfiltered first view ships precomputed positions and needs no worker.
+  await deferred.goto(base);
+  await expect(deferred.locator("canvas")).toHaveAttribute(
+    "data-layout",
+    "ready",
+  );
   expect(errors).toEqual([]);
   console.log(
     "App checks passed: visible mobile selections, deferred project recovery, modal focus, backdrop dismissal, and Escape preserving selection.",

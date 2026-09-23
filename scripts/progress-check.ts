@@ -99,7 +99,7 @@ const ready = async () => {
   await expect(status).toHaveText("Yerleşim hazır");
 };
 try {
-  await page.goto(base);
+  await page.goto(`${base}?min=10`);
   await expect(progress).toBeVisible();
   await expect(canvas).toHaveAttribute("aria-busy", "true");
   expect(await progress.getAttribute("aria-valuenow")).toBeNull();
@@ -168,7 +168,7 @@ try {
   await ready();
 
   for (const failure of ["worker-error", "post-error"]) {
-    await page.goto(`${base}?${failure}=1`);
+    await page.goto(`${base}?min=10&${failure}=1`);
     await expect(canvas).toHaveAttribute("data-layout", "fallback");
     await expect(status).toBeVisible();
     await expect(progress).toHaveCount(0);
@@ -188,7 +188,7 @@ try {
   }
   // Date changes must send period-specific membership, weights and counts to physics.
   await page.setViewportSize({ width: 1512, height: 982 });
-  await page.goto(base);
+  await page.goto(`${base}?min=10`);
   await expect(progress).toBeVisible();
   await complete();
   await ready();

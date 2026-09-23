@@ -127,7 +127,7 @@ try {
         .sort(),
     )
     .toEqual(Object.keys(ensemble.musicians).sort());
-  expect(new URL(spatial.url()).searchParams.get("min")).toBe("all");
+  expect(new URL(spatial.url()).searchParams.get("min")).toBeNull();
   await spatial
     .getByRole("button", { name: "Seçimi kaldır", exact: true })
     .click();

@@ -35,7 +35,8 @@ The old strongest-three layout heuristic could also discard weak bridges between
 - Global D3, ForceAtlas2 and ngraph layouts normalize components by population and typical radius, compressing long radial tails. Communities mode uses its own compact local simulations and preserves the final geometry without radial compression.
 - Communities are split into connected parts using the full induced graph. Internal springs are sparsified only after this split, so a weak internal bridge cannot be lost through an external path.
 - Community-level springs aggregate all cross-group edges with log-compressed weights. Local circles include actual member extents, count-dependent clearance and padding. A final collision-only pass is followed by uniform center expansion if any circle intersection remains.
-- Disconnected sets of communities are enclosed and arranged with [D3 circle packing](https://d3js.org/d3-hierarchy/pack#packSiblings). Packing translates each disconnected set without changing its internal pairwise distances. The other engines retain component boxes.
+- The largest connected set of communities sits on the left. Smaller disconnected sets are shelf-packed beside it in a screen-shaped (1.6:1) block, replacing an earlier circle packing that left them as a sparse ring around the main network. Packing translates each set without changing its internal pairwise distances. The other engines retain component boxes.
+- Local community simulations run on an allocation-free Barnes-Hut implementation (`src/local-force.ts`) with the same forces as d3, followed by a grid-based collision pass. Rest length shrinks with the square root of log shared concerts, so frequent partners sit closer. The default view is precomputed at build time and shipped in `runtime.json`.
 - The three spacing choices change repulsion, collision clearance and group padding, rather than just multiplying every coordinate. Fitting can still offset part of the apparent spacing change.
 - Canvas coordinates keep the same scale on both axes, including mobile. At wide zoom, markers may shrink to 0.75 pixels instead of the previous 2-pixel minimum; the 7-pixel minimum hit target remains. Collision clearance also grows more strongly with concert count. Both changes matter for overlap reduction.
 
@@ -43,7 +44,7 @@ The old strongest-three layout heuristic could also discard weak bridges between
 
 Tests cover deterministic finite positions, input immutability, empty and isolated graphs, weak bridges, increasing spacing, URL validation, all engines on the full archive, cancellation, failure recovery, search, paths, filters and mobile controls.
 
-The current default filter contains 1,427 musicians. Measurements on the checked-in dataset show that the detail selector changes the actual partition:
+The former 10-concert default filter contains 1,427 musicians; the app now opens unfiltered with 12,077 musicians who have concert records. Measurements on the checked-in dataset show that the detail selector changes the actual partition:
 
 | Grouping       | Communities with multiple musicians | Largest community |
 | -------------- | ----------------------------------: | ----------------: |
@@ -51,7 +52,9 @@ The current default filter contains 1,427 musicians. Measurements on the checked
 | Balanced (1.5) |                                  29 |               175 |
 | Detailed (3)   |                                  63 |               131 |
 
-The full 14,714-person archive produces 3,396 communities at the balanced setting, including 2,790 isolates. On this machine, the community calculation took around 2 seconds for the default view and 14–17 seconds for the full archive in Bun. Timing depends on the runtime and hardware; simulations use bounded iterations, not a convergence guarantee.
+The full 14,714-person archive produces 3,396 communities at the balanced setting, including 2,790 isolates. On this machine, the community calculation originally took around 2 seconds for the 10-concert view and 14–17 seconds for the full archive in Bun; it now takes about 0.3 and 2 seconds.
+
+`scripts/layout-quality.ts` is the feedback loop for tuning. On the full archive (12,077 musicians) the current layout scores a fitted zoom of 0.109 (was 0.080), neighbourhood precision 0.618 (was 0.609) and zero marker overlaps; on the 10-concert view precision rose from 0.42 to 0.50. Fewer simulation ticks, stronger or weaker local charge and gravity, more retained springs per musician and community-level force changes were measured and rejected: each traded precision for compactness or had no measurable effect. Timing depends on the runtime and hardware; simulations use bounded iterations, not a convergence guarantee.
 
 Regression fixtures verify distinct connected communities, preferential proximity along a planted chain, nonintersecting group circles, stable geometry when disconnected networks are packed, deterministic output at each resolution, and unmodified input relationships. Browser checks exercise all grouping levels, URL restoration, mobile controls and the complete archive. Changing grouping does not change the number of rendered relationships or the collaborator filter.
 

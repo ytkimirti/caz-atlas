@@ -7,7 +7,8 @@ import {
 } from "react";
 import type { GraphData, Edge, Ensemble } from "./types";
 import type { LayoutEngine, LayoutStatus, ViewMode } from "./layout-options";
-import type { LayoutResponse } from "./layout";
+import type { LayoutRequest, LayoutResponse, Position } from "./layout";
+import { cacheLayout, cachedLayout, layoutKey } from "./layout-cache";
 import { expandPlaybackView, frameNeighborhood, orbitRadius } from "./camera";
 import type { Viewport } from "./camera";
 import { project3D, sceneBounds } from "./projection";
@@ -240,6 +241,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         { edge, alpha: 1 },
       ]),
     );
+    let fadeNodes: Set<number> | null = null,
+      fadeEdges: Set<string> | null = null,
+      fading = true;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let lastFrame = 0;
     const ranked = [...nodes].sort(
@@ -655,6 +659,38 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         setStatus("fallback");
         invalidateFrame();
       };
+      const request: LayoutRequest = {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          count: props.layoutCounts[n.id] || 0,
+        })),
+        edges: props.layoutData.edges,
+        engine: props.engine,
+        mode: props.mode,
+        spacing: props.spacing,
+        resolution: props.resolution,
+      };
+      const key = layoutKey(request);
+      const apply = (result: Position[]) => {
+        for (const node of result)
+          positions.set(node.id, { x: node.x, y: node.y, z: node.z });
+        previousPositions.current = new Map(positions);
+        scene = sceneBounds(positions.values());
+        pivot = { ...scene.center };
+        updateProjection();
+        settled = true;
+        worker?.terminate();
+        worker = null;
+        setStatus("ready");
+        fit();
+        if (state.current.selected !== null)
+          api.current.focus(state.current.selected);
+      };
+      const cached = cachedLayout(key);
+      if (cached) {
+        apply(cached);
+        return;
+      }
       try {
         worker = new Worker(new URL("./layout.worker.ts", import.meta.url), {
           type: "module",
@@ -665,36 +701,15 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             fallback();
             return;
           }
-          for (const node of event.data.positions)
-            positions.set(node.id, { x: node.x, y: node.y, z: node.z });
-          previousPositions.current = new Map(positions);
-          scene = sceneBounds(positions.values());
-          pivot = { ...scene.center };
-          updateProjection();
-          settled = true;
-          worker?.terminate();
-          worker = null;
-          setStatus("ready");
-          fit();
-          if (state.current.selected !== null)
-            api.current.focus(state.current.selected);
+          cacheLayout(key, event.data.positions);
+          apply(event.data.positions);
         };
         worker.onerror = (event) => {
           event.preventDefault();
           fallback();
         };
         worker.onmessageerror = fallback;
-        worker.postMessage({
-          nodes: nodes.map((n) => ({
-            id: n.id,
-            count: props.layoutCounts[n.id] || 0,
-          })),
-          edges: props.layoutData.edges,
-          engine: props.engine,
-          mode: props.mode,
-          spacing: props.spacing,
-          resolution: props.resolution,
-        });
+        worker.postMessage(request);
       } catch {
         fallback();
       }
@@ -1073,46 +1088,62 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ? 1
         : Math.min(32, now - (lastFrame || now - 16)) / 300;
       lastFrame = now;
+      // Fades only run after the visible graph changes; a settled graph skips
+      // per-edge bookkeeping, which dominated frame time with every tie shown.
+      if (fadeNodes !== visible || fadeEdges !== visibleEdges) {
+        fadeNodes = visible;
+        fadeEdges = visibleEdges;
+        fading = true;
+        for (const edge of s.edges) {
+          const key = edgeKey(edge.source, edge.target);
+          if (!animatedEdges.has(key))
+            animatedEdges.set(key, { edge, alpha: 0 });
+        }
+      }
       let animating = false;
-      for (const node of nodes) {
-        const target = visible.has(node.id) ? 1 : 0,
-          current = opacity.get(node.id) || 0;
-        const next =
-          target > current
-            ? Math.min(target, current + delta)
-            : Math.max(target, current - delta);
-        opacity.set(node.id, next);
-        if (next !== target) animating = true;
-      }
-      for (const edge of s.edges) {
-        const key = edgeKey(edge.source, edge.target);
-        if (!animatedEdges.has(key)) animatedEdges.set(key, { edge, alpha: 0 });
-      }
-      for (const [key, item] of animatedEdges) {
-        const target = visibleEdges.has(key) ? 1 : 0;
-        item.alpha =
-          target > item.alpha
-            ? Math.min(target, item.alpha + delta)
-            : Math.max(target, item.alpha - delta);
-        if (item.alpha !== target) animating = true;
-        if (!item.alpha && !target) animatedEdges.delete(key);
+      if (fading) {
+        for (const node of nodes) {
+          const target = visible.has(node.id) ? 1 : 0,
+            current = opacity.get(node.id) || 0;
+          const next =
+            target > current
+              ? Math.min(target, current + delta)
+              : Math.max(target, current - delta);
+          opacity.set(node.id, next);
+          if (next !== target) animating = true;
+        }
+        for (const [key, item] of animatedEdges) {
+          const target = visibleEdges.has(key) ? 1 : 0;
+          item.alpha =
+            target > item.alpha
+              ? Math.min(target, item.alpha + delta)
+              : Math.max(target, item.alpha - delta);
+          if (item.alpha !== target) animating = true;
+          if (!item.alpha && !target) animatedEdges.delete(key);
+        }
+        fading = animating;
       }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const focus = s.selected;
+      // Inlined projection: no per-edge allocations on large graphs.
       function line(e: Edge) {
-        if (!positions.has(e.source) || !positions.has(e.target)) return;
-        const a = point(e.source),
-          b = point(e.target);
+        const a = projected.get(e.source),
+          b = projected.get(e.target);
+        if (!a || !b) return;
+        const ax = a.x * zoom + panX,
+          ay = a.y * zoom + panY,
+          bx = b.x * zoom + panX,
+          by = b.y * zoom + panY;
         if (
-          (a.x < 0 && b.x < 0) ||
-          (a.y < 0 && b.y < 0) ||
-          (a.x > width && b.x > width) ||
-          (a.y > height && b.y > height)
+          (ax < 0 && bx < 0) ||
+          (ay < 0 && by < 0) ||
+          (ax > width && bx > width) ||
+          (ay > height && by > height)
         )
           return;
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
       }
       function lines(edges: Edge[], color: string, lineWidth: number) {
         ctx.beginPath();

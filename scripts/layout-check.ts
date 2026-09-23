@@ -58,7 +58,8 @@ try {
       terminate() {}
     } as unknown as typeof Worker;
   });
-  await page.reload();
+  // The unfiltered view is precomputed, so use one that needs the worker.
+  await page.goto(`${base}?min=10`);
   await expect(canvas).toHaveAttribute("data-layout", "fallback");
   await expect(page.getByRole("status")).toContainText(
     "Mevcut görünüm korunuyor",

@@ -6,6 +6,9 @@ import type {
   GraphMusician,
   Venue,
 } from "./types";
+import { filterGraph } from "./graph";
+import type { LayoutRequest, Position } from "./layout";
+import { cacheLayout, layoutKey } from "./layout-cache";
 
 export type RuntimeConcerts = Omit<ConcertIndex, "ensembles" | "venues"> & {
   venues: Omit<Venue, "ensembles">[];
@@ -13,6 +16,8 @@ export type RuntimeConcerts = Omit<ConcertIndex, "ensembles" | "venues"> & {
 export interface RuntimeData {
   nodes: GraphMusician[];
   concerts: RuntimeConcerts;
+  /** Layout key of the default view, whose positions are the node x / y. */
+  layout?: string;
 }
 export interface ProjectData {
   ensembles: Ensemble[];
@@ -36,6 +41,7 @@ type PackedConcert = [
 ];
 export interface PackedRuntime {
   version: 1;
+  layout?: string;
   nodes: PackedNode[];
   concerts: Omit<RuntimeConcerts, "edges" | "venues" | "timeline"> & {
     edges: PackedEdge[];
@@ -55,18 +61,26 @@ const unpackEdges = (edges: PackedEdge[]): Edge[] =>
 export function packRuntime(
   atlas: Atlas,
   concerts: ConcertIndex,
+  // Precomputed default view; see defaultLayoutRequest.
+  layout?: { key: string; positions: Position[] },
 ): PackedRuntime {
+  const positions = layout && new Map(layout.positions.map((p) => [p.id, p]));
+  const round = (value: number) => Math.round(value * 10) / 10;
   return {
     version: 1,
-    nodes: atlas.nodes.map(({ id, key, name, group, degree, x, y }) => [
-      id,
-      key,
-      name,
-      group,
-      degree,
-      x,
-      y,
-    ]),
+    ...(layout ? { layout: layout.key } : {}),
+    nodes: atlas.nodes.map(({ id, key, name, group, degree, x, y }) => {
+      const p = positions?.get(id);
+      return [
+        id,
+        key,
+        name,
+        group,
+        degree,
+        p ? round(p.x) : x,
+        p ? round(p.y) : y,
+      ];
+    }),
     concerts: {
       meta: concerts.meta,
       counts: concerts.counts,
@@ -85,9 +99,48 @@ export function packRuntime(
     },
   };
 }
+// Mirrors the app's initial view: all dates, no filters, default layout.
+export function defaultLayoutRequest(
+  nodes: GraphMusician[],
+  concerts: Pick<ConcertIndex, "counts" | "edges">,
+): LayoutRequest {
+  const graph = filterGraph(
+    { nodes, edges: concerts.edges },
+    concerts.counts,
+    null,
+    concerts.counts,
+  );
+  return {
+    nodes: graph.nodes.map((n) => ({
+      id: n.id,
+      count: concerts.counts[n.id] || 0,
+    })),
+    edges: graph.edges,
+    engine: "communities",
+    mode: "2d",
+    spacing: 1,
+    resolution: 1.5,
+  };
+}
+// Shipped positions make the first view ready without a layout worker.
+export function seedDefaultLayout(data: RuntimeData) {
+  if (!data.layout) return;
+  const request = defaultLayoutRequest(data.nodes, data.concerts);
+  if (layoutKey(request) !== data.layout) return;
+  const byId = new Map(data.nodes.map((n) => [n.id, n]));
+  cacheLayout(
+    data.layout,
+    request.nodes.map(({ id }) => ({
+      id,
+      x: byId.get(id)!.x,
+      y: byId.get(id)!.y,
+    })),
+  );
+}
 export function unpackRuntime(data: PackedRuntime): RuntimeData {
   if (data.version !== 1) throw new Error("Unsupported runtime data version");
   return {
+    layout: data.layout,
     nodes: data.nodes.map(([id, key, name, group, degree, x, y]) => ({
       id,
       key,

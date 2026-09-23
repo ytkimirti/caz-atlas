@@ -23,6 +23,12 @@ beforeEach(async () => {
     "src/runtime-data.ts",
     "src/graph.ts",
     "src/types.ts",
+    "src/layout.ts",
+    "src/layout-cache.ts",
+    "src/layout-links.ts",
+    "src/layout-options.ts",
+    "src/community-layout.ts",
+    "src/local-force.ts",
   ])
     await copyFile(join(project, file), join(root, file));
   await Bun.write(join(root, ".cache/keys.json"), JSON.stringify(["Alice"]));
