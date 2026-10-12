@@ -23,7 +23,7 @@ import {
   MusicianInspector,
   PairInspector,
 } from "./Inspector";
-import type { ConcertSource, InspectorNav } from "./Inspector";
+import type { ConcertSource, InspectorNav, InspectorStep } from "./Inspector";
 import { searchAtlas } from "./search";
 import type { SearchKind, SearchResult } from "./search";
 import Timeline from "./Timeline";
@@ -1044,7 +1044,8 @@ function AtlasApp({
     if (topCollaborators !== null) query.set("top", String(topCollaborators));
     if (mode === "3d") query.set("view", mode);
     if (livePhysics) query.set("experience", "live");
-    if (resolution !== defaultResolution) query.set("resolution", String(resolution));
+    if (resolution !== defaultResolution)
+      query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
     if (pairOther !== null) query.set("with", byId.get(pairOther)!.key);
@@ -1154,7 +1155,27 @@ function AtlasApp({
       return byId.get(entry.id)?.name ?? "Müzisyen";
     if (entry.kind === "pair")
       return `${byId.get(entry.id)?.name ?? "Müzisyen"} ve ${byId.get(entry.other)?.name ?? "müzisyen"}`;
-    return ensemblesById.get(entry.id)?.name ?? "Grup";
+    return (
+      ensemblesById.get(entry.id)?.name ??
+      concertSource.ensembleNames.get(entry.id) ??
+      "Grup"
+    );
+  }
+  const trail: InspectorStep[] =
+    selectedEnsemble || musician
+      ? nav.trail.map(({ entry, depth, index }) => ({
+          key: index,
+          depth,
+          label: entryLabel(entry),
+          kind: entry.kind,
+          group:
+            entry.kind === "musician" ? byId.get(entry.id)?.group : undefined,
+        }))
+      : [];
+  function previewStep(step: InspectorStep | null) {
+    const entry = step && nav.trail.find((t) => t.index === step.key)?.entry;
+    setHoveredId(entry?.kind === "musician" ? entry.id : null);
+    setPreviewEnsembleId(entry?.kind === "ensemble" ? entry.id : null);
   }
   const inspectorNav: InspectorNav = {
     canGoBack: nav.canGoBack,
@@ -1165,6 +1186,7 @@ function AtlasApp({
     forward: nav.forward,
   };
   const actions = {
+    next: nav.next ?? null,
     onMusician: pick,
     onEnsemble: openEnsemble,
     onPreviewEnsemble: setPreviewEnsembleId,
@@ -1682,6 +1704,11 @@ function AtlasApp({
               : "Vurgulamayı kaldır"
           }
           nav={inspectorNav}
+          trail={trail}
+          index={nav.index}
+          memory={nav.memory}
+          onTrail={(depth) => nav.go(-depth)}
+          onTrailPreview={previewStep}
           onClose={() =>
             selectedEnsemble || musician ? navigate(null) : setInstrument("")
           }

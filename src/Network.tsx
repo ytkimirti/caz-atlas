@@ -564,7 +564,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             box.top - canvasBounds.top - 12,
           );
         } else if (width > 700) {
-          if (box.left < width / 2)
+          if (box.left + box.right < width)
             viewport.left = Math.max(
               viewport.left,
               box.right - canvasBounds.left + 24,

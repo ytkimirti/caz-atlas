@@ -260,7 +260,7 @@ input[type="checkbox"] {
   position: absolute;
   top: var(--panel-top);
   left: 20px;
-  max-width: calc(100% - 400px);
+  max-width: calc(100% - 400px - var(--trail-depth, 0) * 32px);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -537,17 +537,80 @@ input[type="checkbox"] {
   translate: 14px 0;
 }
 
-/* Inspector: one panel for musicians, groups and instruments. */
+/* Inspector: one panel for musicians, groups and instruments, with the
+   steps that led to it stacked behind its left edge. */
 .selection-panel {
+  --panel-max: calc(100dvh - var(--panel-top) - var(--timeline-height) - 30px);
   position: absolute;
   top: var(--panel-top);
   right: 20px;
+  max-height: var(--panel-max);
+  display: flex;
+  z-index: 5;
+}
+.inspector-card {
+  position: relative;
   width: 340px;
-  max-height: calc(100dvh - var(--panel-top) - var(--timeline-height) - 30px);
+  max-height: var(--panel-max);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 5;
+}
+.inspector-trail {
+  display: flex;
+  margin-right: -8px;
+}
+.inspector-trail ol {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inspector-trail li {
+  display: flex;
+  margin-right: -8px;
+}
+.trail-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 40px;
+  max-height: 100%;
+  padding: 12px 8px 12px 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+  color: var(--muted);
+  background: #f6f7f2;
+  box-shadow: -6px 0 16px #233c2f0d;
+  font-size: 12px;
+  font-weight: 550;
+}
+.inspector-trail li:last-child .trail-step {
+  color: var(--ink);
+  background: #fbfbf8;
+}
+.trail-step:hover,
+.trail-step:focus-visible {
+  color: var(--accent);
+  background: var(--accent-soft);
+  translate: -3px 0;
+}
+.trail-step > span {
+  min-height: 0;
+  overflow: hidden;
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.trail-step > svg {
+  flex-shrink: 0;
+}
+.trail-more {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .inspector-bar {
   display: flex;
@@ -789,6 +852,18 @@ input[type="checkbox"] {
 }
 .row[aria-current="true"] {
   font-weight: 600;
+}
+/* The row the reader followed from here before coming back. */
+.row.is-next {
+  background: #f3f6f1;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.pair-link.is-next,
+.concert-lineup button.is-next {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.pair-person.is-next {
+  background: var(--accent-soft);
 }
 .ensemble-row:hover,
 .ensemble-row:focus-visible {
@@ -1042,7 +1117,22 @@ input[type="checkbox"] {
   pointer-events: auto;
 }
 .atlas:has(.selection-panel) .graph-tools {
-  right: 372px;
+  right: calc(372px + var(--trail-depth, 0) * 32px);
+}
+.atlas:has(.selection-panel[data-depth="1"]) {
+  --trail-depth: 1;
+}
+.atlas:has(.selection-panel[data-depth="2"]) {
+  --trail-depth: 2;
+}
+.atlas:has(.selection-panel[data-depth="3"]) {
+  --trail-depth: 3;
+}
+.atlas:has(.selection-panel[data-depth="4"]) {
+  --trail-depth: 4;
+}
+.atlas:has(.selection-panel[data-depth="5"]) {
+  --trail-depth: 5;
 }
 .instrument-legend {
   display: flex;
@@ -1835,6 +1925,65 @@ input[type="checkbox"] {
     display: none;
   }
 }
+/* Spines would squeeze the map; the steps become tabs above the card. */
+@media (max-width: 1100px) {
+  .selection-panel {
+    width: 340px;
+    flex-direction: column;
+  }
+  .selection-panel:has(.inspector-trail) .inspector-card {
+    max-height: calc(var(--panel-max) - 30px);
+  }
+  .atlas:has(.selection-panel[data-depth]) {
+    --trail-depth: 0;
+  }
+  /* The padding keeps focus rings and the hover lift inside the scroller. */
+  .inspector-trail {
+    flex-shrink: 0;
+    margin: -6px 0 -8px -4px;
+    padding: 6px 0 0 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .inspector-trail ol {
+    min-width: 0;
+  }
+  .inspector-trail li {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0 -6px 0 0;
+  }
+  .inspector-trail li:last-child,
+  .inspector-trail li:has(.trail-more) {
+    flex-shrink: 0;
+  }
+  .inspector-trail li:last-child {
+    margin-right: 0;
+  }
+  .trail-step {
+    flex: 0 1 auto;
+    min-width: 0;
+    flex-direction: row;
+    gap: 6px;
+    width: auto;
+    max-width: 150px;
+    height: 38px;
+    padding: 0 14px 8px 10px;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+    box-shadow: 0 -4px 12px #233c2f0d;
+    --spine-from: 0 12px;
+  }
+  .trail-step:hover,
+  .trail-step:focus-visible {
+    translate: 0 -2px;
+  }
+  .trail-step > span {
+    min-width: 0;
+    writing-mode: horizontal-tb;
+  }
+}
 @media (max-width: 700px) {
   .atlas {
     --timeline-height: calc(218px + env(safe-area-inset-bottom));
@@ -1917,12 +2066,22 @@ input[type="checkbox"] {
     display: flex;
   }
   .selection-panel {
+    --panel-max: min(38dvh, calc(100dvh - var(--timeline-height) - 330px));
     top: auto;
     left: 10px;
     right: 10px;
-    width: auto;
     bottom: calc(var(--timeline-height) + 20px);
-    max-height: min(38dvh, calc(100dvh - var(--timeline-height) - 330px));
+    width: auto;
+  }
+  .inspector-card {
+    width: auto;
+    min-height: 0;
+  }
+  .selection-panel {
+    max-height: calc(var(--panel-max) + 30px);
+  }
+  .selection-panel:has(.inspector-trail) .inspector-card {
+    max-height: var(--panel-max);
   }
   .inspector-identity h2 {
     font-size: 19px;
@@ -2123,8 +2282,20 @@ input[type="checkbox"] {
   .selection-panel {
     animation: panel-in 200ms ease-out;
   }
-  .inspector-body > * {
-    animation: fade-in 180ms ease-out;
+  .selection-panel[data-direction="forward"] .inspector-body > * {
+    animation: push-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .selection-panel[data-direction="back"] .inspector-body > * {
+    animation: pop-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .inspector-trail li:last-child .trail-step {
+    animation: spine-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .trail-step {
+    transition:
+      translate 140ms,
+      background-color 140ms,
+      color 140ms;
   }
   .loading-mark i {
     animation: sound-bar 700ms ease-in-out infinite alternate;
@@ -2146,9 +2317,21 @@ input[type="checkbox"] {
     opacity: 0.55;
   }
 }
-@keyframes fade-in {
+@keyframes push-in {
   from {
     opacity: 0;
+    translate: 16px 0;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    translate: -16px 0;
+  }
+}
+@keyframes spine-in {
+  from {
+    translate: var(--spine-from, 28px 0);
   }
 }
 .popover,

@@ -1,4 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import {
   ArrowLeftRight,
@@ -29,6 +36,20 @@ export interface InspectorNav {
   back: () => void;
   forward: () => void;
 }
+/** One step behind the open panel, drawn as a spine beside it. */
+export interface InspectorStep {
+  key: number;
+  depth: number;
+  label: string;
+  kind: "musician" | "ensemble" | "pair";
+  group?: string;
+}
+/** Where the reader went from here last time, marked in the lists. */
+export type TrailMark =
+  | { kind: "musician"; id: number }
+  | { kind: "ensemble"; id: string }
+  | { kind: "pair"; id: number; other: number }
+  | null;
 interface Actions {
   onMusician: (id: number) => void;
   onEnsemble: (id: string) => void;
@@ -37,6 +58,30 @@ interface Actions {
   onInstrument: (group: string) => void;
   onPair: (id: number, other: number) => void;
   onVenue: (id: string) => void;
+  next: TrailMark;
+}
+const marks = (next: TrailMark, kind: "musician" | "ensemble", id: unknown) =>
+  !!next && next.kind === kind && next.id === id;
+const marksPair = (next: TrailMark, id: number, other: number) =>
+  !!next && next.kind === "pair" && next.id === id && next.other === other;
+
+// Each history entry keeps the panel state it was left in: open lists,
+// expanded rows and scroll.
+const ViewMemory = createContext<{
+  store: Map<string, unknown>;
+  scope: string;
+} | null>(null);
+function useRemembered<T>(name: string, initial: T) {
+  const memory = useContext(ViewMemory);
+  const key = memory && `${memory.scope}|${name}`;
+  const [value, setValue] = useState<T>(() =>
+    key && memory.store.has(key) ? (memory.store.get(key) as T) : initial,
+  );
+  const remember = (next: T) => {
+    if (key) memory.store.set(key, next);
+    setValue(next);
+  };
+  return [value, remember] as const;
 }
 type ProjectState = "ready" | "loading" | "error";
 /** Everything a concert row needs; titles arrive with the lazy details file. */
@@ -59,13 +104,28 @@ export interface DateControl {
   minimum: number;
 }
 
+const SPINES = 4;
+
+function StepIcon({ step }: { step: InspectorStep }) {
+  if (step.kind === "musician")
+    return <InstrumentIcon group={step.group ?? ""} size={14} />;
+  const Icon = step.kind === "pair" ? ArrowLeftRight : Users;
+  return <Icon size={14} aria-hidden="true" />;
+}
+
 // One persistent frame for every selection, so the back and forward buttons
-// keep focus while the body swaps underneath them.
+// keep focus while the body swaps underneath them. The steps that led here
+// stay stacked beside it, nearest last, one click from returning.
 export function InspectorShell({
   label,
   caption,
   contentKey,
   nav,
+  trail,
+  index,
+  memory,
+  onTrail,
+  onTrailPreview,
   onClose,
   closeLabel,
   children,
@@ -74,17 +134,38 @@ export function InspectorShell({
   caption: string;
   contentKey: string;
   nav: InspectorNav;
+  trail: InspectorStep[];
+  /** The history position, which owns `memory`. */
+  index: number;
+  memory: Map<string, unknown>;
+  /** Goes back this many steps. */
+  onTrail: (depth: number) => void;
+  onTrailPreview: (step: InspectorStep | null) => void;
   onClose: () => void;
   closeLabel: string;
   children: ReactNode;
 }) {
   const panel = useRef<HTMLElement>(null);
   const keyboardOpen = useRef(false);
+  // A step taken from the keyboard unmounts its own spine once history moves.
+  const trailJump = useRef(false);
   // A control marked data-nav replaces the body; opened from the keyboard,
   // focus lands on the new title instead of falling to the page.
   const body = useRef<HTMLDivElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const forwardButton = useRef<HTMLButtonElement>(null);
+  const trailList = useRef<HTMLElement>(null);
+  // Deeper slides in from the right, back from the left.
+  const [seen, setSeen] = useState(index);
+  const [direction, setDirection] = useState<"forward" | "back">("forward");
+  if (index !== seen) {
+    setSeen(index);
+    setDirection(index > seen ? "forward" : "back");
+  }
+  const view = useMemo(
+    () => ({ store: memory, scope: contentKey }),
+    [memory, contentKey],
+  );
   const focusTitle = () =>
     panel.current?.querySelector<HTMLElement>("h2")?.focus({
       preventScroll: true,
@@ -101,11 +182,14 @@ export function InspectorShell({
     };
   }, []);
   useLayoutEffect(() => {
-    body.current?.scrollTo({ top: 0 });
-    if (!keyboardOpen.current) return;
+    const top = memory.get(`${contentKey}|scroll`);
+    body.current?.scrollTo({ top: typeof top === "number" ? top : 0 });
+    const jumped = trailJump.current;
+    trailJump.current = false;
+    if (!keyboardOpen.current && !jumped) return;
     keyboardOpen.current = false;
     if (!panel.current?.contains(document.activeElement)) focusTitle();
-  }, [contentKey]);
+  }, [memory, contentKey]);
   // A marked control that did not change the body must not steer a later,
   // unrelated selection into the panel.
   useLayoutEffect(() => {
@@ -124,52 +208,123 @@ export function InspectorShell({
     if (other && !other.disabled) other.focus();
     else focusTitle();
   }, [nav.canGoBack, nav.canGoForward]);
+  // On narrow screens the steps scroll sideways; keep the nearest in view.
+  useLayoutEffect(() => {
+    const list = trailList.current;
+    if (list) list.scrollLeft = list.scrollWidth;
+  }, [index, trail.length]);
+  const spines = trail.slice(-SPINES);
+  const hidden = trail.length - spines.length;
   return (
     <section
       ref={panel}
-      className="selection-panel surface"
+      className="selection-panel"
       aria-label={label}
+      data-direction={direction}
+      data-depth={spines.length + (hidden ? 1 : 0)}
       onClickCapture={(event) => {
         keyboardOpen.current =
           event.detail === 0 &&
           !!(event.target as HTMLElement).closest("[data-nav]");
       }}
     >
-      <div className="inspector-bar">
-        <div className="inspector-nav">
+      {trail.length > 0 && (
+        <nav
+          ref={trailList}
+          className="inspector-trail"
+          aria-label="Geldiğin yol"
+        >
+          <ol>
+            {hidden > 0 && (
+              <li>
+                <button
+                  className="trail-step trail-more"
+                  data-nav
+                  aria-label={`${hidden} adım daha geri: ${trail[0].label}`}
+                  title={`${hidden} adım daha geri: ${trail[0].label}`}
+                  onClick={(event) => {
+                    // The second click of a double click lands on a shifted spine.
+                    if (event.detail > 1) return;
+                    trailJump.current = event.detail === 0;
+                    onTrail(trail[0].depth);
+                  }}
+                >
+                  +{hidden}
+                </button>
+              </li>
+            )}
+            {spines.map((step) => (
+              <li key={step.key}>
+                <button
+                  className="trail-step"
+                  data-nav
+                  aria-label={`Geri dön: ${step.label}`}
+                  title={step.label}
+                  onClick={(event) => {
+                    // The second click of a double click lands on a shifted spine.
+                    if (event.detail > 1) return;
+                    trailJump.current = event.detail === 0;
+                    onTrailPreview(null);
+                    onTrail(step.depth);
+                  }}
+                  onMouseEnter={() => onTrailPreview(step)}
+                  onMouseLeave={() => onTrailPreview(null)}
+                  onFocus={() => onTrailPreview(step)}
+                  onBlur={() => onTrailPreview(null)}
+                >
+                  <StepIcon step={step} />
+                  <span>{step.label}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
+      <div className="inspector-card surface">
+        <div className="inspector-bar">
+          <div className="inspector-nav">
+            <button
+              ref={backButton}
+              className="icon-button"
+              aria-label={`Geri: ${nav.backLabel}`}
+              title={`Geri: ${nav.backLabel}`}
+              disabled={!nav.canGoBack}
+              onClick={nav.back}
+            >
+              <ChevronLeft size={17} />
+            </button>
+            <button
+              ref={forwardButton}
+              className="icon-button"
+              aria-label={`İleri: ${nav.forwardLabel}`}
+              title={`İleri: ${nav.forwardLabel}`}
+              disabled={!nav.canGoForward}
+              onClick={nav.forward}
+            >
+              <ChevronRight size={17} />
+            </button>
+          </div>
+          <span className="section-caption">{caption}</span>
           <button
-            ref={backButton}
             className="icon-button"
-            aria-label={`Geri: ${nav.backLabel}`}
-            title={`Geri: ${nav.backLabel}`}
-            disabled={!nav.canGoBack}
-            onClick={nav.back}
+            aria-label={closeLabel}
+            title={`${closeLabel} (Esc)`}
+            onClick={onClose}
           >
-            <ChevronLeft size={17} />
-          </button>
-          <button
-            ref={forwardButton}
-            className="icon-button"
-            aria-label={`İleri: ${nav.forwardLabel}`}
-            title={`İleri: ${nav.forwardLabel}`}
-            disabled={!nav.canGoForward}
-            onClick={nav.forward}
-          >
-            <ChevronRight size={17} />
+            <X size={16} />
           </button>
         </div>
-        <span className="section-caption">{caption}</span>
-        <button
-          className="icon-button"
-          aria-label={closeLabel}
-          title={`${closeLabel} (Esc)`}
-          onClick={onClose}
+        <div
+          className="inspector-body"
+          ref={body}
+          onScroll={(event) =>
+            memory.set(`${contentKey}|scroll`, event.currentTarget.scrollTop)
+          }
         >
-          <X size={16} />
-        </button>
-      </div>
-      <div className="inspector-body" ref={body}>
-        {children}
+          <ViewMemory.Provider key={index} value={view}>
+            {children}
+          </ViewMemory.Provider>
+        </div>
       </div>
     </section>
   );
@@ -202,7 +357,7 @@ function MusicianRow({
           actions={actions}
         />
         <button
-          className="row-value pair-link"
+          className={`row-value pair-link ${marksPair(actions.next, pairWith.id, musician.id) ? "is-next" : ""}`}
           data-nav
           aria-label={`${pairWith.name} ve ${musician.name}: ${value} ortak konser`}
           title="Birlikte çaldıkları konserler"
@@ -217,7 +372,7 @@ function MusicianRow({
     );
   return (
     <button
-      className={`row ${muted ? "is-muted" : ""}`}
+      className={`row ${muted ? "is-muted" : ""} ${marks(actions.next, "musician", musician.id) ? "is-next" : ""}`}
       data-nav
       aria-current={current ? "true" : undefined}
       title={muted ? "Bu filtrelerde haritada görünmüyor" : undefined}
@@ -250,7 +405,7 @@ function EnsembleRow({
   const members = Object.keys(ensemble.musicians).length;
   return (
     <button
-      className="row ensemble-row"
+      className={`row ensemble-row ${marks(actions.next, "ensemble", ensemble.id) ? "is-next" : ""}`}
       data-nav
       onClick={() => {
         actions.onPreviewEnsemble(null);
@@ -303,7 +458,7 @@ function ConcertRow({
   source: ConcertSource;
   actions: Actions;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useRemembered(`concert:${index}`, false);
   const concert = source.timeline[index];
   const venue = source.venues.get(concert.venue);
   const title =
@@ -340,6 +495,7 @@ function ConcertRow({
             return musician ? (
               <button
                 key={id}
+                className={marks(actions.next, "musician", id) ? "is-next" : ""}
                 data-nav
                 onClick={() => {
                   actions.onHover(null);
@@ -386,7 +542,7 @@ function ConcertList({
   source: ConcertSource;
   actions: Actions;
 }) {
-  const [shown, setShown] = useState(CONCERT_PAGE);
+  const [shown, setShown] = useRemembered(`concerts:${title}`, CONCERT_PAGE);
   return (
     <div className="inspector-section">
       <ListHeading title={title} unit={unit} />
@@ -666,7 +822,7 @@ function PairFinder({
   nodes: GraphMusician[];
   actions: Actions;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useRemembered("pair-query", "");
   const results = useMemo(
     () =>
       query.trim()
@@ -702,7 +858,7 @@ function PairFinder({
           {results.map((other) => (
             <button
               key={other.id}
-              className="row"
+              className={`row ${marksPair(actions.next, musician.id, other.id) ? "is-next" : ""}`}
               data-nav
               onClick={() => {
                 actions.onHover(null);
@@ -764,7 +920,7 @@ export function MusicianInspector({
   source: ConcertSource;
   actions: Actions;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useRemembered("collaborators", false);
   const info = groupInfo(musician.group);
   const shown = expanded
     ? collaborators
@@ -918,7 +1074,7 @@ export function PairInspector({
 }) {
   const person = (m: GraphMusician) => (
     <button
-      className="pair-person"
+      className={`pair-person ${marks(actions.next, "musician", m.id) ? "is-next" : ""}`}
       data-nav
       onClick={() => {
         actions.onHover(null);
@@ -972,7 +1128,7 @@ export function PairInspector({
               return (
                 <button
                   key={id}
-                  className="row"
+                  className={`row ${marksPair(actions.next, from.id, to.id) ? "is-next" : ""}`}
                   data-nav
                   onClick={() => actions.onPair(from.id, to.id)}
                   onMouseEnter={() => actions.onHover(to.id)}
