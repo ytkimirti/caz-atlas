@@ -871,6 +871,9 @@ input[type="checkbox"] {
   border-radius: 2px 2px 0 0;
   touch-action: pan-y;
 }
+.sparkline button[aria-disabled="true"] {
+  cursor: default;
+}
 .sparkline button:hover {
   background: none;
 }

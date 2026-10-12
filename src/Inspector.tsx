@@ -55,6 +55,8 @@ export interface DateControl {
   range: DateRange;
   bounds: DateRange;
   onRange: (range: DateRange) => void;
+  /** Concerts a musician needs in the window to stay on the map. */
+  minimum: number;
 }
 
 // One persistent frame for every selection, so the back and forward buttons
@@ -451,8 +453,14 @@ function YearChart({ career, dates }: { career: Career; dates: DateControl }) {
     rove ?? (allDates || lastIn < 0 ? n - 1 : lastIn),
     n - 1,
   );
-  const select = (lo: number, hi: number) =>
-    dates.onRange(lo === hi && isYear(lo) ? [...bounds] : span(lo, hi));
+  const total = (lo: number, hi: number) =>
+    years.slice(lo, hi + 1).reduce((sum, count) => sum + count, 0);
+  // A window where the selection has too few concerts would drop it from the
+  // map and close this panel, so those years are not selectable.
+  const select = (lo: number, hi: number) => {
+    if (lo === hi && isYear(lo)) dates.onRange([...bounds]);
+    else if (total(lo, hi) > dates.minimum) dates.onRange(span(lo, hi));
+  };
   const indexAt = (x: number) => {
     const box = chart.current!.getBoundingClientRect();
     return Math.min(
@@ -538,6 +546,7 @@ function YearChart({ career, dates }: { career: Career; dates: DateControl }) {
               className={`${lit ? "is-active" : ""} ${inRange(i) ? "is-in" : ""}`}
               aria-label={`${startYear + i}: ${count} konser`}
               aria-pressed={isYear(i)}
+              aria-disabled={count <= dates.minimum || undefined}
               // Pointer clicks and drags resolve on the chart; this is the
               // keyboard path.
               onClick={(event) => {
@@ -582,7 +591,13 @@ function YearChart({ career, dates }: { career: Career; dates: DateControl }) {
         {!allDates && (
           <button
             className="sparkline-reset"
-            onClick={() => dates.onRange([...bounds])}
+            onClick={() => {
+              // This button unmounts with the full range; keep focus in the chart.
+              chart.current
+                ?.querySelectorAll("button")
+                [tabStop]?.focus({ preventScroll: true });
+              dates.onRange([...bounds]);
+            }}
           >
             Tüm yıllar
           </button>

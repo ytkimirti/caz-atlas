@@ -1185,6 +1185,7 @@ function AtlasApp({
     range: [range[0], cursor] as DateRange,
     bounds,
     onRange: changeRange,
+    minimum: moreThan ?? 0,
   };
   const place = venue
     ? venue.name
