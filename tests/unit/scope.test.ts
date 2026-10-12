@@ -8,6 +8,9 @@ import {
   pickConcerts,
   scopeTest,
   sharedConcerts,
+  topVenues,
+  withinDates,
+  yearRange,
 } from "../../src/scope";
 import type { DatedConcert } from "../../src/types";
 
@@ -56,12 +59,36 @@ test("career spans years, including quiet ones, and ranks venues", () => {
   const summary = career([4, 3, 1, 0], timeline)!;
   expect(summary.first).toBe("2020-01-05");
   expect(summary.last).toBe("2021-05-05");
+  expect(summary.startYear).toBe(2020);
   expect(summary.years).toEqual([2, 2]);
-  expect(summary.venues).toEqual([
+  expect(career([2, 0], timeline)!.years).toEqual([1, 1]);
+  expect(topVenues([4, 3, 1, 0], timeline)).toEqual([
     { id: "A", count: 3 },
     { id: "B", count: 1 },
   ]);
   expect(career([], timeline)).toBeNull();
+  expect(topVenues([], timeline)).toEqual([]);
+});
+
+test("date windows keep order and years clamp to the archive", () => {
+  const range: [number, number] = [
+    monthIndex("2020-02"),
+    monthIndex("2021-03"),
+  ];
+  expect(withinDates([4, 3, 2, 1, 0], timeline, range)).toEqual([2, 1]);
+  const bounds: [number, number] = [
+    monthIndex("2020-01"),
+    monthIndex("2021-05"),
+  ];
+  expect(yearRange(2020, 2020, bounds)).toEqual([
+    monthIndex("2020-01"),
+    monthIndex("2020-12"),
+  ]);
+  expect(yearRange(2021, 2021, bounds)).toEqual([
+    monthIndex("2021-01"),
+    monthIndex("2021-05"),
+  ]);
+  expect(yearRange(2019, 2022, bounds)).toEqual(bounds);
 });
 
 test("starting points rank the past year and recent first concerts", () => {

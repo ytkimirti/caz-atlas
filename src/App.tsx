@@ -67,6 +67,8 @@ import {
   pickConcerts,
   scopeTest,
   sharedConcerts,
+  topVenues,
+  withinDates,
 } from "./scope";
 import { groupId, groupInfo, groups, normalize, number } from "./types";
 import {
@@ -893,7 +895,9 @@ function AtlasApp({
     });
     return map;
   }, [concerts]);
-  const musicianHistory = useMemo(
+  // Every date in scope, so the yearly chart keeps the whole career while
+  // the timeline narrows what the lists show.
+  const musicianScoped = useMemo(
     () =>
       selected === null
         ? EMPTY_IDS
@@ -901,39 +905,54 @@ function AtlasApp({
             byMusician.get(selected) ?? EMPTY_IDS,
             concerts.timeline,
             inScope,
-            [range[0], cursor],
+            bounds,
           ),
-    [selected, byMusician, concerts, inScope, range[0], cursor],
+    [selected, byMusician, concerts, inScope, bounds],
+  );
+  const musicianHistory = useMemo(
+    () => withinDates(musicianScoped, concerts.timeline, [range[0], cursor]),
+    [musicianScoped, concerts, range[0], cursor],
   );
   const musicianCareer = useMemo(
-    () => career(musicianHistory, concerts.timeline),
+    () => career(musicianScoped, concerts.timeline),
+    [musicianScoped, concerts],
+  );
+  const musicianVenues = useMemo(
+    () => topVenues(musicianHistory, concerts.timeline),
     [musicianHistory, concerts],
   );
-  const pairHistory = useMemo(
+  const pairScoped = useMemo(
     () =>
       selected === null || pairOther === null
         ? EMPTY_IDS
         : sharedConcerts(
-            [...musicianHistory].reverse(),
+            [...musicianScoped].reverse(),
             [
               ...pickConcerts(
                 byMusician.get(pairOther) ?? EMPTY_IDS,
                 concerts.timeline,
                 inScope,
-                [range[0], cursor],
+                bounds,
               ),
             ].reverse(),
           ).reverse(),
     [
       selected,
       pairOther,
-      musicianHistory,
+      musicianScoped,
       byMusician,
       concerts,
       inScope,
-      range[0],
-      cursor,
+      bounds,
     ],
+  );
+  const pairHistory = useMemo(
+    () => withinDates(pairScoped, concerts.timeline, [range[0], cursor]),
+    [pairScoped, concerts, range[0], cursor],
+  );
+  const pairCareer = useMemo(
+    () => career(pairScoped, concerts.timeline),
+    [pairScoped, concerts],
   );
   const ensembleHistory = useMemo(
     () =>
@@ -1161,6 +1180,11 @@ function AtlasApp({
       setVenueId(id);
       setHoveredId(null);
     },
+  };
+  const dates = {
+    range: [range[0], cursor] as DateRange,
+    bounds,
+    onRange: changeRange,
   };
   const place = venue
     ? venue.name
@@ -1680,6 +1704,8 @@ function AtlasApp({
               musician={musician}
               other={partner}
               shared={pairHistory}
+              career={pairCareer}
+              dates={dates}
               path={pairPath}
               weightOf={weightOf}
               place={place}
@@ -1698,6 +1724,8 @@ function AtlasApp({
               onRetryProjects={() => setProjectAttempt((n) => n + 1)}
               history={musicianHistory}
               career={musicianCareer}
+              venues={musicianVenues}
+              dates={dates}
               nodes={ranked}
               place={place}
               source={concertSource}

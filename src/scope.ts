@@ -69,7 +69,19 @@ export function sharedConcerts(a: readonly number[], b: readonly number[]) {
   return result;
 }
 
-/** Yearly activity and favourite venues of a newest-first concert list. */
+/** Concerts of a list whose month falls inside the range, order kept. */
+export function withinDates(
+  concerts: readonly number[],
+  timeline: DatedConcert[],
+  range: DateRange,
+) {
+  return concerts.filter((i) => {
+    const month = monthIndex(timeline[i].date);
+    return month >= range[0] && month <= range[1];
+  });
+}
+
+/** Yearly activity of a newest-first concert list. */
 export function career(concerts: readonly number[], timeline: DatedConcert[]) {
   if (!concerts.length) return null;
   const first = Number(
@@ -77,21 +89,41 @@ export function career(concerts: readonly number[], timeline: DatedConcert[]) {
   );
   const last = Number(timeline[concerts[0]].date.slice(0, 4));
   const years = Array<number>(last - first + 1).fill(0);
-  const venues = new Map<string, number>();
-  for (const i of concerts) {
-    const { date, venue } = timeline[i];
-    years[Number(date.slice(0, 4)) - first]++;
-    venues.set(venue, (venues.get(venue) ?? 0) + 1);
-  }
+  for (const i of concerts)
+    years[Number(timeline[i].date.slice(0, 4)) - first]++;
   return {
     first: timeline[concerts[concerts.length - 1]].date,
     last: timeline[concerts[0]].date,
     startYear: first,
     years,
-    venues: [...venues]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([id, count]) => ({ id, count })),
   };
+}
+
+/** Venues of a concert list, busiest first. */
+export function topVenues(
+  concerts: readonly number[],
+  timeline: DatedConcert[],
+) {
+  const venues = new Map<string, number>();
+  for (const i of concerts) {
+    const { venue } = timeline[i];
+    venues.set(venue, (venues.get(venue) ?? 0) + 1);
+  }
+  return [...venues]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([id, count]) => ({ id, count }));
+}
+
+/** January to December of the years, clamped to the archive. */
+export function yearRange(
+  from: number,
+  to: number,
+  bounds: DateRange,
+): DateRange {
+  return [
+    Math.min(Math.max(from * 12, bounds[0]), bounds[1]),
+    Math.max(Math.min(to * 12 + 11, bounds[1]), bounds[0]),
+  ];
 }
 
 type Ranked = { id: number; count: number }[];

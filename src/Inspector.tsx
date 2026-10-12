@@ -16,7 +16,9 @@ import MusicianPortrait from "./MusicianPortrait";
 import { groupInfo, number } from "./types";
 import type { DatedConcert, Ensemble, GraphMusician } from "./types";
 import type { ConcertDetails, RuntimeVenue } from "./runtime-data";
-import type { career as careerOf } from "./scope";
+import { yearRange } from "./scope";
+import type { career as careerOf, topVenues } from "./scope";
+import type { DateRange } from "./chronology";
 import { searchAtlas } from "./search";
 
 export interface InspectorNav {
@@ -48,6 +50,12 @@ export interface ConcertSource {
   ensembleNames: Map<string, string>;
 }
 type Career = NonNullable<ReturnType<typeof careerOf>>;
+/** The timeline's counting window and how to move it. */
+export interface DateControl {
+  range: DateRange;
+  bounds: DateRange;
+  onRange: (range: DateRange) => void;
+}
 
 // One persistent frame for every selection, so the back and forward buttons
 // keep focus while the body swaps underneath them.
@@ -415,77 +423,221 @@ function ConcertList({
   );
 }
 
+// Yearly concert counts over every date in scope. A bar selects its year on
+// the timeline, a drag selects a span, and the current window stays lit.
+function YearChart({ career, dates }: { career: Career; dates: DateControl }) {
+  const { startYear, years } = career;
+  const n = years.length;
+  const peak = Math.max(1, ...years);
+  const chart = useRef<HTMLDivElement>(null);
+  const anchor = useRef<number | null>(null);
+  const [drag, setDrag] = useState<[number, number] | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const [focused, setFocused] = useState<number | null>(null);
+  const [rove, setRove] = useState<number | null>(null);
+  const { range, bounds } = dates;
+  const allDates = range[0] === bounds[0] && range[1] === bounds[1];
+  const span = (lo: number, hi: number) =>
+    yearRange(startYear + lo, startYear + hi, bounds);
+  const isYear = (i: number) => {
+    const [from, to] = span(i, i);
+    return !allDates && range[0] === from && range[1] === to;
+  };
+  const inRange = (i: number) =>
+    (startYear + i) * 12 + 11 >= range[0] && (startYear + i) * 12 <= range[1];
+  let lastIn = -1;
+  for (let i = n - 1; i >= 0 && lastIn < 0; i--) if (inRange(i)) lastIn = i;
+  const tabStop = Math.min(
+    rove ?? (allDates || lastIn < 0 ? n - 1 : lastIn),
+    n - 1,
+  );
+  const select = (lo: number, hi: number) =>
+    dates.onRange(lo === hi && isYear(lo) ? [...bounds] : span(lo, hi));
+  const indexAt = (x: number) => {
+    const box = chart.current!.getBoundingClientRect();
+    return Math.min(
+      n - 1,
+      Math.max(0, Math.floor(((x - box.left) / box.width) * n)),
+    );
+  };
+  const end = () => {
+    anchor.current = null;
+    setDrag(null);
+  };
+  // A scope change can shorten the chart under a stale hover or focus.
+  const point = hover ?? focused;
+  const active = drag
+    ? [Math.min(...drag), Math.max(...drag)]
+    : point !== null && point < n
+      ? [point, point]
+      : null;
+  let activeCount = 0;
+  if (active)
+    for (let i = active[0]; i <= active[1]; i++) activeCount += years[i];
+  return (
+    <div className="career">
+      <div className="career-span">
+        {active ? (
+          <span className="career-readout">
+            <strong>
+              {startYear + active[0]}
+              {active[1] > active[0] && `–${startYear + active[1]}`}
+            </strong>{" "}
+            · {number(activeCount)} konser
+          </span>
+        ) : (
+          <>
+            <span>
+              İlk <strong>{concertDate(career.first)}</strong>
+            </span>
+            <span>
+              Son <strong>{concertDate(career.last)}</strong>
+            </span>
+          </>
+        )}
+      </div>
+      <div
+        ref={chart}
+        className={`sparkline ${allDates ? "" : "is-ranged"}`}
+        role="group"
+        aria-label="Yıllara göre konser sayısı"
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          const i = indexAt(event.clientX);
+          anchor.current = i;
+          setDrag([i, i]);
+          setRove(i);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const i = indexAt(event.clientX);
+          setHover(i);
+          if (anchor.current !== null) setDrag([anchor.current, i]);
+        }}
+        onPointerUp={(event) => {
+          if (anchor.current === null) return;
+          const i = indexAt(event.clientX);
+          const from = anchor.current;
+          end();
+          select(Math.min(from, i), Math.max(from, i));
+        }}
+        onPointerCancel={() => {
+          end();
+          setHover(null);
+        }}
+        onPointerLeave={() => {
+          if (anchor.current === null) setHover(null);
+        }}
+      >
+        {years.map((count, i) => {
+          const lit = active && i >= active[0] && i <= active[1];
+          return (
+            <button
+              key={i}
+              tabIndex={i === tabStop ? 0 : -1}
+              className={`${lit ? "is-active" : ""} ${inRange(i) ? "is-in" : ""}`}
+              aria-label={`${startYear + i}: ${count} konser`}
+              aria-pressed={isYear(i)}
+              // Pointer clicks and drags resolve on the chart; this is the
+              // keyboard path.
+              onClick={(event) => {
+                if (event.detail === 0) select(i, i);
+              }}
+              onFocus={(event) => {
+                setRove(i);
+                if (event.currentTarget.matches(":focus-visible"))
+                  setFocused(i);
+              }}
+              onBlur={() => setFocused(null)}
+              onKeyDown={(event) => {
+                const next =
+                  event.key === "ArrowLeft"
+                    ? i - 1
+                    : event.key === "ArrowRight"
+                      ? i + 1
+                      : event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? n - 1
+                          : null;
+                if (next === null) return;
+                event.preventDefault();
+                const target = Math.min(n - 1, Math.max(0, next));
+                chart.current
+                  ?.querySelectorAll("button")
+                  [target]?.focus({ preventScroll: true });
+              }}
+            >
+              <i
+                style={{
+                  height: `${count ? Math.max(8, (count / peak) * 100) : 0}%`,
+                }}
+              />
+            </button>
+          );
+        })}
+      </div>
+      <div className="sparkline-axis">
+        <span>{startYear}</span>
+        {!allDates && (
+          <button
+            className="sparkline-reset"
+            onClick={() => dates.onRange([...bounds])}
+          >
+            Tüm yıllar
+          </button>
+        )}
+        <span>{n > 1 ? startYear + n - 1 : ""}</span>
+      </div>
+    </div>
+  );
+}
+
 function CareerSummary({
   career,
+  venues,
+  dates,
   source,
   actions,
 }: {
   career: Career;
+  venues: ReturnType<typeof topVenues>;
+  dates: DateControl;
   source: ConcertSource;
   actions: Actions;
 }) {
-  const peak = Math.max(...career.years);
-  const lastYear = career.startYear + career.years.length - 1;
   return (
     <>
-      <div className="career">
-        <div className="career-span">
-          <span>
-            İlk <strong>{concertDate(career.first)}</strong>
-          </span>
-          <span>
-            Son <strong>{concertDate(career.last)}</strong>
-          </span>
-        </div>
-        <div
-          className="sparkline"
-          role="img"
-          aria-label={`Yıllara göre konser sayısı, ${career.startYear}–${lastYear}`}
-        >
-          {career.years.map((count, i) => (
-            <i
-              key={i}
-              title={`${career.startYear + i}: ${count} konser`}
-              style={{
-                height: `${count ? Math.max(8, (count / peak) * 100) : 0}%`,
-              }}
-            />
-          ))}
-        </div>
-        {career.years.length > 1 && (
-          <div className="sparkline-axis" aria-hidden="true">
-            <span>{career.startYear}</span>
-            <span>{lastYear}</span>
+      <YearChart career={career} dates={dates} />
+      {venues.length > 0 && (
+        <div className="inspector-section">
+          <ListHeading title="Sık çaldığı mekanlar" unit="Konser" />
+          <div className="rows">
+            {venues.slice(0, 4).map(({ id, count }) => {
+              const venue = source.venues.get(id);
+              return (
+                <button
+                  key={id}
+                  className="row"
+                  title="Haritayı bu mekanla sınırla"
+                  onClick={() => actions.onVenue(id)}
+                >
+                  <span className="row-name">
+                    {venue?.name ?? id}
+                    {venue && <small>{venue.city}</small>}
+                  </span>
+                  <small className="row-value">{number(count)}</small>
+                  <ArrowUpRight
+                    className="row-arrow"
+                    size={14}
+                    aria-hidden="true"
+                  />
+                </button>
+              );
+            })}
           </div>
-        )}
-      </div>
-      <div className="inspector-section">
-        <ListHeading title="Sık çaldığı mekanlar" unit="Konser" />
-        <div className="rows">
-          {career.venues.slice(0, 4).map(({ id, count }) => {
-            const venue = source.venues.get(id);
-            return (
-              <button
-                key={id}
-                className="row"
-                title="Haritayı bu mekanla sınırla"
-                onClick={() => actions.onVenue(id)}
-              >
-                <span className="row-name">
-                  {venue?.name ?? id}
-                  {venue && <small>{venue.city}</small>}
-                </span>
-                <small className="row-value">{number(count)}</small>
-                <ArrowUpRight
-                  className="row-arrow"
-                  size={14}
-                  aria-hidden="true"
-                />
-              </button>
-            );
-          })}
         </div>
-      </div>
+      )}
     </>
   );
 }
@@ -570,6 +722,8 @@ export function MusicianInspector({
   onRetryProjects,
   history,
   career,
+  venues,
+  dates,
   nodes,
   place,
   source,
@@ -584,7 +738,11 @@ export function MusicianInspector({
   onRetryProjects: () => void;
   /** This musician's concerts in the current filters, newest first. */
   history: number[];
+  /** Yearly activity over every date in scope. */
   career: Career | null;
+  /** Venues of the concerts in the date range, busiest first. */
+  venues: ReturnType<typeof topVenues>;
+  dates: DateControl;
   /** Musicians that can be paired, for the path finder. */
   nodes: GraphMusician[];
   place: string;
@@ -627,7 +785,13 @@ export function MusicianInspector({
         </div>
       </dl>
       {career && (
-        <CareerSummary career={career} source={source} actions={actions} />
+        <CareerSummary
+          career={career}
+          venues={venues}
+          dates={dates}
+          source={source}
+          actions={actions}
+        />
       )}
 
       <div className="inspector-section">
@@ -715,6 +879,8 @@ export function PairInspector({
   musician,
   other,
   shared,
+  career,
+  dates,
   path,
   weightOf,
   place,
@@ -725,6 +891,9 @@ export function PairInspector({
   other: GraphMusician;
   /** Concerts with both musicians in the current filters, newest first. */
   shared: number[];
+  /** Yearly shared concerts over every date in scope. */
+  career: Career | null;
+  dates: DateControl;
   /** Shortest path on the visible map, both ends included. */
   path: number[];
   weightOf: (a: number, b: number) => number;
@@ -772,6 +941,7 @@ export function PairInspector({
           </div>
         )}
       </dl>
+      {career && <YearChart career={career} dates={dates} />}
       {path.length > 2 && (
         <div className="inspector-section">
           <ListHeading
