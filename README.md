@@ -6,9 +6,11 @@ Bizim Caz arşivindeki müzisyenleri ve birlikte çaldıkları konserleri göste
 
 - Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Bağın ağırlığı iki müzisyenin birlikte çaldığı farklı konser sayısıdır.
 - 2D harita sık birlikte çalanları topluluklar halinde yerleştirir ve konser başlıklarından çıkarılan grup adlarını yazar. 3D görünüm de vardır.
-- Bir müzisyeni seçince grupları ve en çok birlikte çaldığı kişiler açılır; başka birinin üzerine gelmek aralarındaki en kısa yolu gösterir.
+- Bir müzisyeni seçince grupları, en çok birlikte çaldığı kişiler, ilk/son konseri, yıllara göre etkinliği, sık çaldığı mekanlar ve konser listesi açılır; başka birinin üzerine gelmek aralarındaki en kısa yolu gösterir.
+- Ortak konser sayısına veya haritadaki bağa tıklamak iki müzisyenin birlikte çaldığı konserleri, birlikte çalmadılarsa aralarındaki yolu açar.
+- Arama kutusu boşken köprü müzisyenleri, son 12 ayın en aktiflerini ve yeni gelenleri önerir.
 - Zaman çizelgesiyle 1956'dan kesit tarihine kadar tarih aralığı seçilir; **Canlı** modda ağ zaman içinde oynatılır.
-- Konser eşiği, kişi başına bağ sınırı ve mekan filtreleri; enstrümana göre vurgulama. Filtreler, tarih, seçim ve görünüm ayarları URL'de saklanır, bağlantı olarak paylaşılabilir.
+- Konser eşiği, kişi başına bağ sınırı, şehir ve mekan filtreleri, jam session'ları ve 10+ kişilik kadroları sayma seçenekleri; enstrümana göre vurgulama. Filtreler, tarih, seçim ve görünüm ayarları URL'de saklanır, bağlantı olarak paylaşılabilir.
 
 Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi kapatma.
 
@@ -23,7 +25,7 @@ bun run build
 bun test
 ```
 
-`dev` ve `build`, depodaki arşivlerden `public/data/runtime.json` ve `public/data/projects.json` dosyalarını üretir. Tarayıcı önce küçük çalışma verisini ve önceden hesaplanmış varsayılan yerleşimi yükler; diğer yerleşimler Web Worker'da hesaplanır.
+`dev` ve `build`, depodaki arşivlerden `public/data/runtime.json`, `projects.json` ve `details.json` dosyalarını üretir. Tarayıcı önce küçük çalışma verisini ve önceden hesaplanmış varsayılan yerleşimi yükler, konser sayılarını ve bağları zaman çizelgesinden kendisi çıkarır; konser başlıkları seçim yapılınca yüklenir; diğer yerleşimler Web Worker'da hesaplanır.
 
 | Klasör     | İçerik                                                                     |
 | ---------- | -------------------------------------------------------------------------- |

@@ -21,6 +21,7 @@ beforeEach(async () => {
     "scripts/archive.ts",
     "scripts/prepare-runtime.ts",
     "src/runtime-data.ts",
+    "src/chronology.ts",
     "src/graph.ts",
     "src/types.ts",
     "src/layout.ts",

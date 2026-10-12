@@ -148,7 +148,33 @@ test("timeline shares deduplication, matching and past-only rules with concert t
     "2026-09-14",
   );
   expect(index.timeline).toEqual([
-    { date: "2020-01-01", venue: "Bova", musicians: [2] },
-    { date: "2026-09-01", venue: "Nardis", musicians: [1] },
+    { key: "earlier", date: "2020-01-01", venue: "Bova", musicians: [2] },
+    {
+      key: "a",
+      date: "2026-09-01",
+      venue: "Nardis",
+      musicians: [1],
+      others: ["Same Name"],
+    },
+  ]);
+});
+
+test("timeline keeps titles and marks open sessions", () => {
+  const index = indexConcerts(
+    nodes,
+    [
+      {
+        ...make("jam", ["İlhan Şen", "Asude Şaşmaz"]),
+        title: "Friday  Jam Session",
+      },
+      { ...make("band", ["Önder Focan"]), title: "Trio" },
+    ],
+    "2026-09-14",
+  );
+  expect(
+    index.timeline.map(({ key, title, jam }) => ({ key, title, jam })),
+  ).toEqual([
+    { key: "jam", title: "Friday Jam Session", jam: true },
+    { key: "band", title: "Trio", jam: undefined },
   ]);
 });

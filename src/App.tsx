@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Network as NetworkIcon,
+  ArrowLeftRight,
   AudioLines,
   Check,
   Focus,
@@ -20,8 +21,9 @@ import {
   InspectorShell,
   InstrumentInspector,
   MusicianInspector,
+  PairInspector,
 } from "./Inspector";
-import type { InspectorNav } from "./Inspector";
+import type { ConcertSource, InspectorNav } from "./Inspector";
 import { searchAtlas } from "./search";
 import type { SearchKind, SearchResult } from "./search";
 import Timeline from "./Timeline";
@@ -50,8 +52,22 @@ import {
 import type { LayoutStatus } from "./layout-options";
 import type { NetworkHandle } from "./Network";
 import type { Ensemble, GraphMusician } from "./types";
-import { seedDefaultLayout, unpackRuntime } from "./runtime-data";
-import type { ProjectData, RuntimeData } from "./runtime-data";
+import {
+  detailsVersion,
+  seedDefaultLayout,
+  unpackRuntime,
+} from "./runtime-data";
+import type { ConcertDetails, ProjectData, RuntimeData } from "./runtime-data";
+import {
+  bridges,
+  career,
+  CROWD,
+  concertsByMusician,
+  discover,
+  pickConcerts,
+  scopeTest,
+  sharedConcerts,
+} from "./scope";
 import { groupId, groupInfo, groups, normalize, number } from "./types";
 import {
   adjacency,
@@ -59,6 +75,16 @@ import {
   shortestPath,
   topCollaboratorEdges,
 } from "./graph";
+
+type Starts = Record<
+  "bridges" | "active" | "newcomers",
+  { id: number; count: number }[]
+>;
+const START_ROWS = [
+  ["bridges", "Köprüler", "Ayrı sahneleri birbirine bağlayanlar", "bağ"],
+  ["active", "Son 12 ay", "En çok konser verenler", "konser"],
+  ["newcomers", "Yeni gelenler", "İlk konseri son iki yılda", "konser"],
+] as const;
 
 function AtlasSearch({
   nodes,
@@ -72,6 +98,8 @@ function AtlasSearch({
   onSelect,
   onHover,
   selected,
+  starts,
+  byId,
 }: {
   nodes: GraphMusician[];
   ensembles: Ensemble[];
@@ -84,6 +112,9 @@ function AtlasSearch({
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
   selected: number | null;
+  /** Suggested starting points, computed only while the empty list is open. */
+  starts: () => Starts;
+  byId: Map<number, GraphMusician>;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -95,6 +126,10 @@ function AtlasSearch({
     [nodes, ensembles, query, kind],
   );
   const active = results[Math.min(cursor, Math.max(0, results.length - 1))];
+  const suggestions = useMemo(
+    () => (open && !query.trim() && kind !== "ensemble" ? starts() : null),
+    [open, query, kind, starts],
+  );
   function hover(result?: SearchResult) {
     onHover(result?.kind === "musician" ? result.musician.id : null);
   }
@@ -253,6 +288,39 @@ function AtlasSearch({
               </button>
             ))}
           </div>
+          {suggestions && (
+            <div className="search-starts">
+              {START_ROWS.map(([key, label, hint, unit]) =>
+                suggestions[key].length ? (
+                  <div key={key} className="start-row">
+                    <span title={hint}>{label}</span>
+                    <div role="group" aria-label={`${label}: ${hint}`}>
+                      {suggestions[key].map(({ id, count }) => {
+                        const musician = byId.get(id)!;
+                        return (
+                          <button
+                            key={id}
+                            className="start-chip"
+                            title={`${musician.name} · ${number(count)} ${unit}`}
+                            onMouseEnter={() => onHover(id)}
+                            onMouseLeave={() => onHover(null)}
+                            onFocus={() => onHover(id)}
+                            onClick={() => {
+                              onSelect(id);
+                              onHover(null);
+                              setOpen(false);
+                            }}
+                          >
+                            {musician.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
           <span className="search-caption">
             {query ? "ARAMA SONUÇLARI" : "ARŞİVİ KEŞFET"}
           </span>
@@ -329,10 +397,7 @@ export default function App() {
     };
     read("/data/runtime.json")
       .then(unpackRuntime)
-      .then((runtime) => {
-        seedDefaultLayout(runtime);
-        setData(runtime);
-      })
+      .then(setData)
       .catch((e) => {
         if (e.name !== "AbortError")
           setError("Graf verisi yüklenemedi. Tekrar deneyebilirsin.");
@@ -488,6 +553,29 @@ function AtlasApp({
       ? params.get("venue")!
       : "",
   );
+  const venuesById = useMemo(
+    () => new Map(concerts.venues.map((v) => [v.id, v])),
+    [concerts],
+  );
+  const cityOf = useMemo(
+    () => new Map(concerts.venues.map((v) => [v.id, v.city])),
+    [concerts],
+  );
+  const cities = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const v of concerts.venues)
+      totals.set(v.city, (totals.get(v.city) ?? 0) + v.concerts);
+    return [...totals]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "tr"))
+      .map(([name, concerts]) => ({ name, concerts }));
+  }, [concerts]);
+  const [city, setCity] = useState(() =>
+    cities.some((c) => c.name === params.get("city"))
+      ? params.get("city")!
+      : "",
+  );
+  const [jams, setJams] = useState(() => params.get("jams") !== "0");
+  const [crowds, setCrowds] = useState(() => params.get("crowds") !== "0");
   const [viewOpen, setViewOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [popoverLeft, setPopoverLeft] = useState(24);
@@ -515,10 +603,17 @@ function AtlasApp({
     const ensemble = params.get("g");
     if (ensemble) return { kind: "ensemble", id: ensemble };
     const musician = data.nodes.find((n) => n.key === params.get("m"));
+    const other = data.nodes.find((n) => n.key === params.get("with"));
+    if (musician && other && musician !== other)
+      return { kind: "pair", id: musician.id, other: other.id };
     return musician ? { kind: "musician", id: musician.id } : null;
   }, [params, data]);
   const nav = useNavigation(initialEntry);
-  const selectedId = nav.entry?.kind === "musician" ? nav.entry.id : null;
+  const selectedId =
+    nav.entry?.kind === "musician" || nav.entry?.kind === "pair"
+      ? nav.entry.id
+      : null;
+  const pairId = nav.entry?.kind === "pair" ? nav.entry.other : null;
   const selectedEnsembleId =
     nav.entry?.kind === "ensemble" ? nav.entry.id : null;
   const reportLayoutStatus = useCallback((status: LayoutStatus) => {
@@ -533,72 +628,85 @@ function AtlasApp({
   useSettingsPanel(filtersOpen ? "filters" : viewOpen ? "view-settings" : null);
   const [venueQuery, setVenueQuery] = useState("");
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [hoveredTie, setHoveredTie] = useState<number | null>(null);
+  const [details, setDetails] = useState<ConcertDetails | null>(null);
+  const [detailsError, setDetailsError] = useState<"failed" | "stale" | null>(
+    null,
+  );
+  const [detailsAttempt, setDetailsAttempt] = useState(0);
   const [previewEnsembleId, setPreviewEnsembleId] = useState<string | null>(
     null,
   );
   const [mapEnsembleId, setMapEnsembleId] = useState<string | null>(null);
   const network = useRef<NetworkHandle>(null);
   const byId = useMemo(() => new Map(data.nodes.map((n) => [n.id, n])), [data]);
-  const venue = useMemo(
-    () => concerts.venues.find((v) => v.id === venueId),
-    [concerts, venueId],
+  const venue = venuesById.get(venueId);
+  // Every count and tie below comes from the concerts in scope.
+  const inScope = useMemo(
+    () => scopeTest({ venue: venueId, city, jams, crowds }, cityOf),
+    [venueId, city, jams, crowds, cityOf],
   );
-  const historyCounts = venue?.musicians ?? concerts.counts;
+  const scoped = useMemo(
+    () => (inScope ? concerts.timeline.filter(inScope) : concerts.timeline),
+    [concerts, inScope],
+  );
+  const queryConcerts = useMemo(() => createConcertWindow(scoped), [scoped]);
+  const history = useMemo(() => queryConcerts(0, 1e6), [queryConcerts]);
+  // The shipped default layout matches the unfiltered archive; seed it once the
+  // archive is in scope, before the map asks for a layout.
+  const seeded = useRef(false);
+  if (!seeded.current && !inScope) {
+    seeded.current = true;
+    seedDefaultLayout(data, history);
+  }
+  const historyCounts = history.counts;
   const historyGraph = useMemo(
     () =>
       filterGraph(
-        { nodes: data.nodes, edges: venue?.edges ?? concerts.edges },
+        { nodes: data.nodes, edges: history.edges },
         historyCounts,
         moreThan,
         historyCounts,
       ),
-    [data, concerts, historyCounts, moreThan, venue],
+    [data, history, historyCounts, moreThan],
   );
   useEffect(() => {
     setPlaying(false);
   }, [historyGraph, mode, spacing, resolution]);
-  const queryConcerts = useMemo(
-    () => createConcertWindow(concerts.timeline, venueId),
-    [concerts, venueId],
-  );
+  const allDates = range[0] === bounds[0] && cursor === bounds[1];
   const windowed = useMemo(
-    () => queryConcerts(range[0], cursor),
-    [queryConcerts, range[0], cursor],
+    () => (allDates ? history : queryConcerts(range[0], cursor)),
+    [allDates, history, queryConcerts, range[0], cursor],
   );
   const histogram = useMemo(
-    () => concertHistogram(concerts.timeline, bounds, venueId),
-    [concerts, bounds, venueId],
+    () => concertHistogram(scoped, bounds),
+    [scoped, bounds],
   );
   const replayFrom = useMemo(
-    () => firstPlaybackMonth(concerts.timeline, range, moreThan, venueId),
-    [concerts, range, moreThan, venueId],
+    () => firstPlaybackMonth(scoped, range, moreThan),
+    [scoped, range, moreThan],
   );
   const arrivals = useMemo(
-    () => playbackArrivals(concerts.timeline, range, moreThan, venueId),
-    [concerts, range, moreThan, venueId],
+    () => playbackArrivals(scoped, range, moreThan),
+    [scoped, range, moreThan],
   );
-  const allDates = range[0] === bounds[0] && cursor === bounds[1];
   const knownEnsembles = projects?.ensembles ?? EMPTY_ENSEMBLES;
+  // Jam sessions never name a group; place, lineup size and dates do change rosters.
   const ensembles = useMemo(
     () =>
-      allDates
+      allDates && !city && crowds
         ? venue
           ? (projects?.venues[venue.id] ?? EMPTY_ENSEMBLES)
           : knownEnsembles
-        : concertEnsembles(
-            concerts.timeline,
-            knownEnsembles,
-            range[0],
-            cursor,
-            venueId,
-          ),
+        : concertEnsembles(scoped, knownEnsembles, range[0], cursor),
     [
       allDates,
+      city,
+      crowds,
       venue,
-      concerts,
+      scoped,
       range[0],
       cursor,
-      venueId,
       projects,
       knownEnsembles,
     ],
@@ -675,6 +783,15 @@ function AtlasApp({
     selectedId !== null && visibleIds.has(selectedId) ? selectedId : null;
   const hovered =
     hoveredId !== null && visibleIds.has(hoveredId) ? hoveredId : null;
+  // A hidden partner falls back to the musician view, as a hidden musician closes it.
+  const pairOther =
+    selected !== null && pairId !== null && visibleIds.has(pairId)
+      ? pairId
+      : null;
+  const tie =
+    selected !== null && hoveredTie !== null && visibleIds.has(hoveredTie)
+      ? hoveredTie
+      : null;
   // Frame the regulars; one-off guests often sit in other scenes.
   const frameIds = useMemo(() => {
     const shown = ensembleMembers.filter(({ member }) =>
@@ -690,6 +807,28 @@ function AtlasApp({
     selectedEnsembleId !== null ||
     selected !== null ||
     (showEnsembles && layoutStatus !== "pending");
+  const loadDetails = selectedEnsembleId !== null || selected !== null;
+  useEffect(() => {
+    if (!loadDetails || details) return;
+    const controller = new AbortController();
+    setDetailsError(null);
+    fetch(`/data/details.json?v=${data.details}`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Concert details unavailable");
+        return response.json() as Promise<ConcertDetails>;
+      })
+      .then((loaded) => {
+        // Rows align by position; a file from another data build would
+        // attach titles to the wrong concerts.
+        if (detailsVersion(loaded) !== data.details) throw new Error("stale");
+        setDetails(loaded);
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError")
+          setDetailsError(error.message === "stale" ? "stale" : "failed");
+      });
+    return () => controller.abort();
+  }, [loadDetails, details, detailsAttempt, data]);
   useEffect(() => {
     if (!loadProjects || projects) return;
     const controller = new AbortController();
@@ -711,18 +850,102 @@ function AtlasApp({
   useEffect(() => {
     setPreviewEnsembleId(null);
     setHoveredId(null);
+    setHoveredTie(null);
   }, [nav.entry]);
   const neighbors = useMemo(() => adjacency(graph), [graph]);
   const edges = useMemo(
     () => topCollaboratorEdges(graph.edges, topCollaborators),
     [graph, topCollaborators],
   );
+  const pairPath = useMemo(
+    () =>
+      selected !== null && pairOther !== null
+        ? shortestPath(neighbors, selected, pairOther)
+        : [],
+    [neighbors, selected, pairOther],
+  );
+  // Hovering a person or a tie previews that route; otherwise a pair's path stays.
   const path = useMemo(
     () =>
       selected !== null && hovered !== null
         ? shortestPath(neighbors, selected, hovered)
-        : [],
-    [neighbors, selected, hovered],
+        : selected !== null && tie !== null
+          ? [selected, tie]
+          : pairPath,
+    [neighbors, selected, hovered, tie, pairPath],
+  );
+  const weightOf = useCallback(
+    (a: number, b: number) =>
+      neighbors.get(a)?.find((tie) => tie.id === b)?.weight ?? 0,
+    [neighbors],
+  );
+  const byMusician = useMemo(
+    () => concertsByMusician(concerts.timeline),
+    [concerts],
+  );
+  const byEnsemble = useMemo(() => {
+    const map = new Map<string, number[]>();
+    concerts.timeline.forEach((concert, i) => {
+      if (!concert.ensemble) return;
+      const list = map.get(concert.ensemble);
+      if (list) list.push(i);
+      else map.set(concert.ensemble, [i]);
+    });
+    return map;
+  }, [concerts]);
+  const musicianHistory = useMemo(
+    () =>
+      selected === null
+        ? EMPTY_IDS
+        : pickConcerts(
+            byMusician.get(selected) ?? EMPTY_IDS,
+            concerts.timeline,
+            inScope,
+            [range[0], cursor],
+          ),
+    [selected, byMusician, concerts, inScope, range[0], cursor],
+  );
+  const musicianCareer = useMemo(
+    () => career(musicianHistory, concerts.timeline),
+    [musicianHistory, concerts],
+  );
+  const pairHistory = useMemo(
+    () =>
+      selected === null || pairOther === null
+        ? EMPTY_IDS
+        : sharedConcerts(
+            [...musicianHistory].reverse(),
+            [
+              ...pickConcerts(
+                byMusician.get(pairOther) ?? EMPTY_IDS,
+                concerts.timeline,
+                inScope,
+                [range[0], cursor],
+              ),
+            ].reverse(),
+          ).reverse(),
+    [
+      selected,
+      pairOther,
+      musicianHistory,
+      byMusician,
+      concerts,
+      inScope,
+      range[0],
+      cursor,
+    ],
+  );
+  const ensembleHistory = useMemo(
+    () =>
+      selectedEnsembleId === null
+        ? EMPTY_IDS
+        : pickConcerts(
+            byEnsemble.get(selectedEnsembleId) ?? EMPTY_IDS,
+            concerts.timeline,
+            inScope,
+            [range[0], cursor],
+          ),
+    [selectedEnsembleId, byEnsemble, concerts, inScope, range[0], cursor],
   );
   const ranked = useMemo(
     () =>
@@ -745,14 +968,47 @@ function AtlasApp({
     return result;
   }, [graph]);
   const musician = selected === null ? null : byId.get(selected)!;
+  const partner = pairOther === null ? null : (byId.get(pairOther) ?? null);
   const hoveredMusician = hovered === null ? null : byId.get(hovered)!;
   const collaborators = selected === null ? [] : neighbors.get(selected) || [];
+  // Venues whose concerts credit at least one archive musician.
+  const playedVenues = useMemo(
+    () =>
+      new Set(
+        concerts.timeline.flatMap((c) => (c.musicians.length ? [c.venue] : [])),
+      ),
+    [concerts],
+  );
   const venues = useMemo(
     () =>
-      concerts.venues.filter((v) =>
-        normalize(v.name + " " + v.city).includes(normalize(venueQuery)),
+      concerts.venues.filter(
+        (v) =>
+          playedVenues.has(v.id) &&
+          (!city || v.city === city) &&
+          normalize(v.name + " " + v.city).includes(normalize(venueQuery)),
       ),
-    [concerts, venueQuery],
+    [concerts, playedVenues, city, venueQuery],
+  );
+  // Computed on first use and kept until the map or the window changes.
+  const starts = useMemo(() => {
+    let cached: Starts | null = null;
+    return () =>
+      (cached ??= {
+        bridges: bridges(graph.nodes, graph.edges),
+        ...discover(scoped, range[0], cursor),
+      });
+  }, [graph, scoped, range[0], cursor]);
+  const concertSource: ConcertSource = useMemo(
+    () => ({
+      timeline: concerts.timeline,
+      details,
+      detailsState: details ? "ready" : (detailsError ?? "loading"),
+      onRetryDetails: () => setDetailsAttempt((n) => n + 1),
+      venues: venuesById,
+      byId,
+      ensembleNames: new Map(knownEnsembles.map((e) => [e.id, e.name])),
+    }),
+    [concerts, details, detailsError, venuesById, byId, knownEnsembles],
   );
 
   useEffect(() => {
@@ -761,7 +1017,10 @@ function AtlasApp({
     if (range[1] !== bounds[1]) query.set("to", monthValue(range[1]));
     if (cursor !== range[1]) query.set("at", monthValue(cursor));
     if (minConcerts !== null) query.set("min", String(minConcerts));
+    if (city) query.set("city", city);
     if (venueId) query.set("venue", venueId);
+    if (!jams) query.set("jams", "0");
+    if (!crowds) query.set("crowds", "0");
     if (instrument) query.set("instrument", instrument);
     if (topCollaborators !== null) query.set("top", String(topCollaborators));
     if (mode === "3d") query.set("view", mode);
@@ -769,6 +1028,7 @@ function AtlasApp({
     if (resolution !== defaultResolution) query.set("resolution", String(resolution));
     if (spacing !== 1) query.set("spacing", String(spacing));
     if (selected !== null) query.set("m", byId.get(selected)!.key);
+    if (pairOther !== null) query.set("with", byId.get(pairOther)!.key);
     if (ensembleSelected) query.set("g", selectedEnsembleId!);
     // Keep the navigation record attached to this history entry.
     window.history.replaceState(
@@ -779,9 +1039,13 @@ function AtlasApp({
   }, [
     minConcerts,
     venueId,
+    city,
+    jams,
+    crowds,
     instrument,
     topCollaborators,
     selected,
+    pairOther,
     selectedEnsembleId,
     ensembleSelected,
     byId,
@@ -828,7 +1092,22 @@ function AtlasApp({
     setTopCollaborators(null);
     setVenueId("");
     setVenueQuery("");
+    setCity("");
+    setJams(true);
+    setCrowds(true);
   }
+  function changeCity(next: string) {
+    setCity(next);
+    if (next && venue && venue.city !== next) setVenueId("");
+    setHoveredId(null);
+  }
+  const selectTie = useCallback(
+    (other: number) => {
+      if (selectedId !== null)
+        navigate({ kind: "pair", id: selectedId, other });
+    },
+    [navigate, selectedId],
+  );
   const selectFromGraph = useCallback(
     (id: number | null) =>
       navigate(id === null ? null : { kind: "musician", id }),
@@ -854,6 +1133,8 @@ function AtlasApp({
     if (entry === null) return "Genel görünüm";
     if (entry.kind === "musician")
       return byId.get(entry.id)?.name ?? "Müzisyen";
+    if (entry.kind === "pair")
+      return `${byId.get(entry.id)?.name ?? "Müzisyen"} ve ${byId.get(entry.other)?.name ?? "müzisyen"}`;
     return ensemblesById.get(entry.id)?.name ?? "Grup";
   }
   const inspectorNav: InspectorNav = {
@@ -870,11 +1151,30 @@ function AtlasApp({
     onPreviewEnsemble: setPreviewEnsembleId,
     onHover: setHoveredId,
     onInstrument: setInstrument,
+    onPair: (id: number, other: number) => {
+      if (!visibleIds.has(id) || !visibleIds.has(other)) setMinConcerts(null);
+      setHoveredId(null);
+      navigate({ kind: "pair", id, other });
+    },
+    onVenue: (id: string) => {
+      if (city && venuesById.get(id)?.city !== city) setCity("");
+      setVenueId(id);
+      setHoveredId(null);
+    },
   };
-  const place = venue ? venue.name : allDates ? "Tüm arşiv" : "Seçili dönem";
+  const place = venue
+    ? venue.name
+    : city
+      ? city
+      : allDates
+        ? "Tüm arşiv"
+        : "Seçili dönem";
   const activeFilters =
     Number(minConcerts !== null) +
     Number(Boolean(venueId)) +
+    Number(Boolean(city)) +
+    Number(!jams) +
+    Number(!crowds) +
     Number(topCollaborators !== null);
   function togglePopover(
     event: React.MouseEvent<HTMLButtonElement>,
@@ -960,6 +1260,8 @@ function AtlasApp({
         onHover={setHoveredId}
         onSelectEnsemble={openEnsemble}
         onHoverEnsemble={setMapEnsembleId}
+        onSelectTie={selectTie}
+        onHoverTie={setHoveredTie}
       />
       {mode === "3d" && (
         <p id="spatial-help" className="sr-only">
@@ -991,6 +1293,8 @@ function AtlasApp({
           selected={selected}
           onSelect={pick}
           onHover={setHoveredId}
+          starts={starts}
+          byId={byId}
         />
         <div className="toolbar-actions" role="toolbar" aria-label="Görünüm">
           <button
@@ -1063,12 +1367,39 @@ function AtlasApp({
               <X size={12} />
             </button>
           )}
+          {city && (
+            <button
+              onClick={() => changeCity("")}
+              aria-label="Şehir filtresini kaldır"
+            >
+              {city}
+              <X size={12} />
+            </button>
+          )}
           {venue && (
             <button
               onClick={() => setVenueId("")}
               aria-label="Mekan filtresini kaldır"
             >
               {venue.name}
+              <X size={12} />
+            </button>
+          )}
+          {!jams && (
+            <button
+              onClick={() => setJams(true)}
+              aria-label="Jam session'ları geri ekle"
+            >
+              Jam session'lar hariç
+              <X size={12} />
+            </button>
+          )}
+          {!crowds && (
+            <button
+              onClick={() => setCrowds(true)}
+              aria-label="Kalabalık kadroları geri ekle"
+            >
+              {CROWD}+ kişilik kadrolar hariç
               <X size={12} />
             </button>
           )}
@@ -1199,6 +1530,18 @@ function AtlasApp({
               </div>
             </div>
             <div className="filter-section">
+              <Toggle
+                label="Jam session'ları say"
+                checked={jams}
+                onChange={setJams}
+              />
+              <Toggle
+                label={`${CROWD}+ kişilik kadroları say`}
+                checked={crowds}
+                onChange={setCrowds}
+              />
+            </div>
+            <div className="filter-section">
               <div className="field-heading">
                 <label htmlFor="venue-search">Mekan</label>
                 {venue && (
@@ -1210,14 +1553,29 @@ function AtlasApp({
                   </button>
                 )}
               </div>
-              <div className="venue-search">
-                <Search size={14} />
-                <input
-                  id="venue-search"
-                  placeholder="Mekan veya şehir ara"
-                  value={venueQuery}
-                  onChange={(e) => setVenueQuery(e.target.value)}
-                />
+              <div className="place-fields">
+                <select
+                  className="city-select"
+                  aria-label="Şehir"
+                  value={city}
+                  onChange={(e) => changeCity(e.target.value)}
+                >
+                  <option value="">Tüm şehirler</option>
+                  {cities.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name} · {number(c.concerts)}
+                    </option>
+                  ))}
+                </select>
+                <div className="venue-search">
+                  <Search size={14} />
+                  <input
+                    id="venue-search"
+                    placeholder="Mekan ara"
+                    value={venueQuery}
+                    onChange={(e) => setVenueQuery(e.target.value)}
+                  />
+                </div>
               </div>
               <div className="venue-list" aria-label="Mekanlar">
                 <button
@@ -1225,7 +1583,7 @@ function AtlasApp({
                   aria-pressed={!venueId}
                   onClick={() => setVenueId("")}
                 >
-                  <span>Tüm mekanlar</span>
+                  <span>{city ? `${city}: tüm mekanlar` : "Tüm mekanlar"}</span>
                   {!venueId && <Check size={14} />}
                 </button>
                 {venues.map((v) => (
@@ -1276,17 +1634,23 @@ function AtlasApp({
                 caption: "GRUP / PROJE",
                 contentKey: `g:${selectedEnsemble.id}`,
               }
-            : musician
+            : musician && partner
               ? {
-                  label: "Seçili müzisyen",
-                  caption: "MÜZİSYEN",
-                  contentKey: `m:${musician.id}`,
+                  label: "Seçili müzisyen çifti",
+                  caption: "BİRLİKTE",
+                  contentKey: `p:${musician.id}:${partner.id}`,
                 }
-              : {
-                  label: "Vurgulanan enstrüman",
-                  caption: "ENSTRÜMAN",
-                  contentKey: `i:${instrument}`,
-                })}
+              : musician
+                ? {
+                    label: "Seçili müzisyen",
+                    caption: "MÜZİSYEN",
+                    contentKey: `m:${musician.id}`,
+                  }
+                : {
+                    label: "Vurgulanan enstrüman",
+                    caption: "ENSTRÜMAN",
+                    contentKey: `i:${instrument}`,
+                  })}
           closeLabel={
             selectedEnsemble || musician
               ? "Seçimi kaldır"
@@ -1306,6 +1670,20 @@ function AtlasApp({
               place={place}
               onFrame={() => network.current?.frameGroup()}
               onRevealAll={() => setMinConcerts(null)}
+              history={ensembleHistory}
+              source={concertSource}
+              actions={actions}
+            />
+          ) : musician && partner ? (
+            <PairInspector
+              key={`${musician.id}:${partner.id}`}
+              musician={musician}
+              other={partner}
+              shared={pairHistory}
+              path={pairPath}
+              weightOf={weightOf}
+              place={place}
+              source={concertSource}
               actions={actions}
             />
           ) : musician ? (
@@ -1318,6 +1696,11 @@ function AtlasApp({
               byId={byId}
               projects={projects ? "ready" : projectError ? "error" : "loading"}
               onRetryProjects={() => setProjectAttempt((n) => n + 1)}
+              history={musicianHistory}
+              career={musicianCareer}
+              nodes={ranked}
+              place={place}
+              source={concertSource}
               actions={actions}
             />
           ) : (
@@ -1351,6 +1734,17 @@ function AtlasApp({
               {groupInfo(hoveredMusician.group).name} ·{" "}
               {number(counts[hoveredMusician.id] ?? 0)} konser ·{" "}
               {number(neighbors.get(hovered!)?.length ?? 0)} bağ
+            </span>
+          </div>
+        ) : musician && tie !== null ? (
+          <div className="hover-readout surface">
+            <ArrowLeftRight size={14} aria-hidden="true" />
+            <strong>
+              {musician.name} ve {byId.get(tie)!.name}
+            </strong>
+            <span>
+              {number(weightOf(musician.id, tie))} ortak konser · konserleri
+              görmek için tıkla
             </span>
           </div>
         ) : mapEnsemble ? (

@@ -812,6 +812,174 @@ input[type="checkbox"] {
   margin: 4px 0 0 2px;
 }
 
+/* Collaborator rows: the name opens the person, the count opens the pair. */
+.row-split {
+  display: flex;
+  align-items: center;
+}
+.row-split .row {
+  flex: 1;
+  min-width: 0;
+}
+.row-split .row .row-value {
+  display: none;
+}
+.pair-link {
+  flex-shrink: 0;
+  min-width: 28px;
+  margin-right: 8px;
+}
+.pair-link:hover,
+.pair-link:focus-visible {
+  color: #fff;
+  background: var(--accent);
+}
+
+.career {
+  margin: -6px 0 18px;
+}
+.career-span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.career-span strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 28px;
+  border-bottom: 1px solid var(--line);
+}
+.sparkline i {
+  flex: 1;
+  min-width: 1px;
+  border-radius: 1px 1px 0 0;
+  background: #8ba992;
+}
+.sparkline i:hover {
+  background: var(--accent);
+}
+.sparkline-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 9.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.concert-row {
+  align-items: flex-start;
+  min-height: 0;
+}
+.concert-row time {
+  flex-shrink: 0;
+  width: 74px;
+  padding-top: 1px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.concert-chevron {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #a8b29f;
+  transition: rotate 120ms;
+}
+.concert-row[aria-expanded="true"] .concert-chevron {
+  rotate: 90deg;
+}
+.concert-lineup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px 8px 92px;
+}
+.concert-lineup button,
+.concert-lineup span,
+.concert-lineup a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+}
+.concert-lineup span {
+  color: var(--muted);
+}
+.concert-lineup button:hover,
+.concert-lineup button:focus-visible {
+  border-color: #8ba992;
+  background: var(--accent-soft);
+}
+.concert-lineup a {
+  border-color: transparent;
+  color: var(--accent);
+  text-decoration: none;
+}
+.concert-lineup a:hover {
+  text-decoration: underline;
+}
+
+.pair-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0 0 14px;
+  font: inherit;
+}
+.pair-identity > svg {
+  margin-left: 12px;
+  color: var(--muted);
+  rotate: 90deg;
+}
+.pair-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  text-align: left;
+}
+.pair-person:hover,
+.pair-person:focus-visible {
+  background: var(--accent-soft);
+}
+.pair-search {
+  margin: 2px 0 4px;
+}
+
+.place-fields {
+  display: flex;
+  gap: 6px;
+}
+.place-fields .venue-search {
+  flex: 1;
+  min-width: 0;
+}
+.city-select {
+  width: 118px;
+  height: 36px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12.5px;
+}
+
 /* Map chrome: instrument legend on the left, zoom on the right. */
 .graph-tools {
   position: absolute;
@@ -965,6 +1133,38 @@ input[type="checkbox"] {
   padding: 8px;
   max-height: min(420px, 65dvh);
   overflow: auto;
+}
+.search-starts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 10px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.start-row > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: #849080;
+}
+.start-row > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.search-results .start-chip {
+  width: auto;
+  min-height: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11.5px;
+}
+.search-results .start-chip:hover,
+.search-results .start-chip:focus-visible {
+  border-color: #8ba992;
+  background: var(--accent-soft);
 }
 .search-caption {
   display: block;

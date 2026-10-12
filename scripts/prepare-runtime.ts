@@ -3,6 +3,8 @@ import { rename } from "node:fs/promises";
 import { computeLayout } from "../src/layout";
 import { layoutKey } from "../src/layout-cache";
 import {
+  allTime,
+  concertDetails,
   defaultLayoutRequest,
   packRuntime,
   projectData,
@@ -20,13 +22,14 @@ const atlas: Atlas = await Bun.file(new URL("atlas.json", directory)).json();
 const concerts: ConcertIndex = await Bun.file(
   new URL("concerts.json", directory),
 ).json();
-const request = defaultLayoutRequest(atlas.nodes, concerts);
+const request = defaultLayoutRequest(atlas.nodes, allTime(concerts.timeline));
 const started = performance.now();
 const layout = { key: layoutKey(request), positions: computeLayout(request) };
 console.log(`default layout: ${Math.round(performance.now() - started)} ms`);
 for (const [name, data] of [
   ["runtime.json", packRuntime(atlas, concerts, layout)],
   ["projects.json", projectData(concerts)],
+  ["details.json", concertDetails(concerts)],
 ] as const) {
   const output = new URL(name, directory).pathname;
   const json = JSON.stringify(data);

@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type NavEntry =
-  { kind: "musician"; id: number } | { kind: "ensemble"; id: string } | null;
+  | { kind: "musician"; id: number }
+  | { kind: "ensemble"; id: string }
+  // Two musicians: their shared concerts, or the path between them.
+  | { kind: "pair"; id: number; other: number }
+  | null;
 
 export const sameEntry = (a: NavEntry, b: NavEntry) =>
-  a === b || (!!a && !!b && a.kind === b.kind && a.id === b.id);
+  a === b ||
+  (!!a &&
+    !!b &&
+    a.kind === b.kind &&
+    a.id === b.id &&
+    (a.kind !== "pair" || a.other === (b as typeof a).other));
 
 interface HistoryState {
   nav: number;

@@ -1,6 +1,6 @@
 import type {
+  ArchivedConcert,
   ConcertIndex,
-  DatedConcert,
   Edge,
   Ensemble,
   Musician,
@@ -19,6 +19,10 @@ export interface Concert {
   musicians: string[];
 }
 
+// Open sessions credit the house band; the title names the event, not a group.
+export const isJam = (title: string) =>
+  /jam\s*session|açık\s*sahne|acik\s*sahne|open\s*mic/i.test(title);
+
 export function indexConcerts(
   nodes: Musician[],
   concerts: Concert[],
@@ -29,7 +33,7 @@ export function indexConcerts(
     const name = normalize(node.name.trim()).replace(/\s+/g, " ");
     names.set(name, [...(names.get(name) || []), node.id]);
   }
-  const timeline: DatedConcert[] = [];
+  const timeline: ArchivedConcert[] = [];
   const ensembles = new Map<string, Ensemble>();
   const venueEnsembles = new Map<string, Map<string, Ensemble>>();
   function recordEnsemble(
@@ -70,10 +74,14 @@ export function indexConcerts(
     if (concert.date >= through || visited.has(concert.key)) continue;
     visited.add(concert.key);
     const ids = new Set<number>();
+    const others: string[] = [];
     for (const name of concert.musicians) {
       const matches = names.get(normalize(name.trim()).replace(/\s+/g, " "));
       if (matches?.length === 1) ids.add(matches[0]);
-      else unmatched.add(name);
+      else {
+        unmatched.add(name);
+        if (!others.includes(name.trim())) others.push(name.trim());
+      }
     }
     let venue = venues.get(concert.venue);
     if (!venue) {
@@ -91,14 +99,10 @@ export function indexConcerts(
     }
     let ensembleId: string | undefined;
     const title = concert.title?.trim().replace(/\s+/g, " ");
+    const jam = !!title && isJam(title);
     // Concert titles identify ensembles/projects, not permanent memberships.
     // Solo artist bills and generic open sessions do not create group labels.
-    if (
-      title &&
-      ids.size >= 2 &&
-      !names.has(normalize(title)) &&
-      !/jam\s*session|açık\s*sahne|acik\s*sahne|open\s*mic/i.test(title)
-    ) {
+    if (title && ids.size >= 2 && !names.has(normalize(title)) && !jam) {
       ensembleId = normalize(title).replace(/\s+/g, " ");
       recordEnsemble(ensembles, title, ids);
       const local =
@@ -113,10 +117,14 @@ export function indexConcerts(
     }
     const members = [...ids];
     timeline.push({
+      key: concert.key,
+      ...(title ? { title } : {}),
       ...(ensembleId ? { ensemble: ensembleId } : {}),
       date: concert.date,
       venue: concert.venue,
       musicians: members,
+      ...(others.length ? { others } : {}),
+      ...(jam ? { jam: true as const } : {}),
     });
     for (let i = 0; i < members.length; i++)
       for (let j = i + 1; j < members.length; j++) {
@@ -137,7 +145,6 @@ export function indexConcerts(
         edges: [...pairs.values()],
         ensembles: [...(venueEnsembles.get(venue.id)?.values() ?? [])],
       }))
-      .filter((venue) => Object.keys(venue.musicians).length)
       .sort((a, b) => b.concerts - a.concerts),
     stats: {
       concerts: visited.size,

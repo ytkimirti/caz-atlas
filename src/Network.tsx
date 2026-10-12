@@ -55,6 +55,9 @@ interface Props {
   onHover: (id: number | null) => void;
   onSelectEnsemble: (id: string) => void;
   onHoverEnsemble: (id: string | null) => void;
+  /** A drawn tie of the selected musician, by the other musician's id. */
+  onSelectTie: (id: number) => void;
+  onHoverTie: (id: number | null) => void;
 }
 
 // Ties by shared concerts: one, two or three, four to nine, ten or more.
@@ -365,6 +368,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       members: number[];
     }[] = [];
     let hoverRegion: string | null = null;
+    let hoverTie: number | null = null;
+    // A tie only opens when its readout was showing as the press began, so a
+    // click on empty space around a busy musician still clears the selection.
+    let pressedTie: number | null = null;
     const pointers = new Map<number, { x: number; y: number }>();
     let startX = 0,
       startY = 0,
@@ -640,6 +647,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function clearHover() {
       hoverId = null;
       state.current.onHover(null);
+      if (hoverTie !== null) {
+        hoverTie = null;
+        state.current.onHoverTie(null);
+      }
       if (hoverRegion !== null) {
         hoverRegion = null;
         state.current.onHoverEnsemble(null);
@@ -946,6 +957,32 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         )?.id ?? null
       );
     }
+    // Ties of the selected musician are clickable: the nearest drawn line
+    // within a few pixels, measured to the segment between both markers.
+    function tieAt(x: number, y: number) {
+      const s = state.current;
+      if (s.selected === null || !projected.has(s.selected)) return null;
+      const a = point(s.selected);
+      let best: number | null = null,
+        nearest = 5;
+      for (const { id } of s.neighbors.get(s.selected) ?? []) {
+        if (!projected.has(id) || !s.visibleEdges.has(edgeKey(s.selected, id)))
+          continue;
+        const b = point(id),
+          dx = b.x - a.x,
+          dy = b.y - a.y,
+          length = dx * dx + dy * dy;
+        const t = length
+          ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / length))
+          : 0;
+        const distance = Math.hypot(a.x + t * dx - x, a.y + t * dy - y);
+        if (distance < nearest) {
+          nearest = distance;
+          best = id;
+        }
+      }
+      return best;
+    }
     function updateHover(x: number, y: number) {
       const id = hit(x, y);
       if (id !== hoverId) {
@@ -959,13 +996,20 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         state.current.onHoverEnsemble(region);
         invalidateFrame();
       }
-      canvas.style.cursor = id === null && region === null ? "grab" : "pointer";
+      const tie = id === null && region === null ? tieAt(x, y) : null;
+      if (tie !== hoverTie) {
+        hoverTie = tie;
+        state.current.onHoverTie(tie);
+      }
+      canvas.style.cursor =
+        id === null && region === null && tie === null ? "grab" : "pointer";
     }
     function down(event: PointerEvent) {
       if (event.button !== 0) return;
       stopMovement();
       canvas.focus({ preventScroll: true });
       const p = local(event);
+      pressedTie = event.pointerType === "touch" ? null : hoverTie;
       pointers.set(event.pointerId, p);
       canvas.setPointerCapture(event.pointerId);
       if (pointers.size === 1) {
@@ -1032,9 +1076,15 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       if (!moved && !pinched && pointers.size === 1) {
         const id = hit(p.x, p.y);
         const region = id === null ? regionAt(p.x, p.y) : null;
+        const tie =
+          id === null && region === null && pressedTie !== null
+            ? tieAt(p.x, p.y)
+            : null;
         if (spatial && id !== null && id === state.current.selected)
           focusNeighborhood(id);
         if (region !== null) state.current.onSelectEnsemble(region);
+        else if (tie !== null && tie === pressedTie)
+          state.current.onSelectTie(tie);
         else state.current.onSelect(id);
       }
       if (event.timeStamp - orbitTime > 80) yawVelocity = pitchVelocity = 0;

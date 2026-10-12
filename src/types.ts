@@ -65,9 +65,16 @@ export interface DatedConcert {
   date: string;
   venue: string;
   musicians: number[];
+  jam?: true;
+}
+export interface ArchivedConcert extends DatedConcert {
+  key: string;
+  title?: string;
+  /** Lineup names without a unique archive musician. */
+  others?: string[];
 }
 export interface ConcertIndex {
-  timeline: DatedConcert[];
+  timeline: ArchivedConcert[];
   ensembles: Ensemble[];
   counts: Record<string, number>;
   edges: Edge[];
