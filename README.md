@@ -1,149 +1,86 @@
 # caz-atlas
 
-Bizim Caz arşivindeki müzisyenleri ve birlikte çaldıkları konserleri keşfetmek için tam ekran, açık temalı bir graf.
+Bizim Caz arşivindeki müzisyenleri ve birlikte çaldıkları konserleri gösteren, tam ekran etkileşimli bir graf.
 
-## Çalıştırma
+**Canlı:** [caz-atlas.vercel.app](https://caz-atlas.vercel.app)
+
+- Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Bağın ağırlığı iki müzisyenin birlikte çaldığı farklı konser sayısıdır.
+- 2D harita sık birlikte çalanları topluluklar halinde yerleştirir ve konser başlıklarından çıkarılan grup adlarını yazar. 3D görünüm de vardır.
+- Bir müzisyeni seçince grupları ve en çok birlikte çaldığı kişiler açılır; başka birinin üzerine gelmek aralarındaki en kısa yolu gösterir.
+- Zaman çizelgesiyle 1956'dan kesit tarihine kadar tarih aralığı seçilir; **Canlı** modda ağ zaman içinde oynatılır.
+- Konser eşiği, kişi başına bağ sınırı ve mekan filtreleri; enstrümana göre vurgulama. Filtreler, tarih, seçim ve görünüm ayarları URL'de saklanır, bağlantı olarak paylaşılabilir.
+
+Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi kapatma.
+
+## Geliştirme
+
+[Bun](https://bun.sh) gerekir. Sunucu, veritabanı veya hesap yoktur; uygulama statik bir Vite sitesidir.
 
 ```sh
 bun install
-bun run dev
+bun run dev     # http://localhost:5173, PORT ile değiştirilebilir
 bun run build
+bun test
 ```
 
-Varsayılan port 5173; `PORT` ile değiştirilebilir. Yönetilen worktree önizlemesi için `pw wait` kullanılır. Hesap, uygulama sunucusu veya veritabanı gerekmez.
+`dev` ve `build`, depodaki arşivlerden `public/data/runtime.json` ve `public/data/projects.json` dosyalarını üretir. Tarayıcı önce küçük çalışma verisini ve önceden hesaplanmış varsayılan yerleşimi yükler; diğer yerleşimler Web Worker'da hesaplanır.
 
-`dev` ve `build`, yerel arşivlerden `public/data/runtime.json` ve `public/data/projects.json` dosyalarını otomatik üretir. Tarayıcı önce yalnızca küçük çalışma verisini yükler; grup / proje detayları yerleşim hazır olunca veya bir müzisyen seçilince ayrıca yüklenir. Proje verisi yüklenemese de graf çalışır; seçim ve görünüm panellerinden tekrar denenebilir. Kaynak arşivler değiştirilmez. Veriyi güncelledikten sonra sunucuyu yeniden başlat veya `bun run data:runtime --build` çalıştır.
+| Klasör     | İçerik                                                                     |
+| ---------- | -------------------------------------------------------------------------- |
+| `src/`     | React arayüzü, canvas çizimi, yerleşim motorları, arama ve zaman çizelgesi |
+| `scripts/` | Veri toplama / hazırlama betikleri, tarayıcı testleri ve ölçümler          |
+| `data/`    | Kaynak kesitleri ve müzisyen dizini                                        |
+| `tests/`   | Birim testleri                                                             |
+| `docs/`    | [Yerleşim araştırması](docs/layout-research.md): motor karşılaştırması     |
 
-## Otomatik yayınlama
-
-`.github/workflows/deploy.yml`, `main` dalına her push sonrasında birim testlerini çalıştırır, statik üretim çıktısını GitHub Actions içinde oluşturur ve `--prebuilt` ile yayınlar. Actions sayfasındaki **Run workflow** düğmesiyle de `main` için çalıştırılabilir. Yayın adresi çalışmanın özetinde görünür. Vite çıktısı Vercel Build Output API biçiminde paketlenir; uygulama sunucu ortam değişkeni kullanmadığından `vercel pull` gerekmez. Böylece yalnızca bu projeye erişebilen token ile yayın yapılabilir.
-
-Vercel'in GitHub entegrasyonunu kurmak veya GitHub hesabına erişim vermek gerekmez. [Vercel'in resmi GitHub Actions akışı](https://vercel.com/kb/guide/how-can-i-use-github-actions-with-vercel) kullanılır. İlk kurulum için [bu deponun Actions secrets ayarlarına](https://github.com/ytkimirti/caz-atlas/settings/secrets/actions) üç repository secret ekle:
-
-- `VERCEL_TOKEN`: [Vercel token sayfasından](https://vercel.com/account/tokens) oluşturulan, projenin bulunduğu takıma erişebilen ayrı bir yayınlama token'ı.
-- `VERCEL_ORG_ID`: doğru projeye bağlı yerel `.vercel/project.json` dosyasındaki `orgId`.
-- `VERCEL_PROJECT_ID`: aynı dosyadaki `projectId`.
-
-Projeyi bağlamak gerekirse doğru Vercel hesabıyla `vercel link` çalıştır ve hedef projeyi seç. Token'ı kaynak koda veya sohbet mesajına ekleme. Token süresi dolduğunda repository secret'ı yenile. Secret'lar eksikse workflow açıklayıcı bir hatayla durur. Workflow dosyası GitHub'a push edilmeden otomatik yayınlama etkinleşmez.
-
-## Kullanım
-
-- Başlangıçta filtre uygulanmaz: seçilen tarihlerde konser kaydı bulunan tüm müzisyenler ve tüm bağlantılar görünür. Konser eşiği ve bağlantı sınırı Filtreler panelinden eklenir.
-- Bağlantı sınırı seçilirse her müzisyenin **en çok birlikte çaldığı ilk X kişiye** bağlantısı çizilir. Kişi sayısı 1, 3, 5 veya 10 seçilebilir; Tümü (varsayılan) sınırı kaldırır. Bir bağın iki kişiden birinin listesine girmesi yeterlidir, bu yüzden popüler müzisyenlerin görünür bağ sayısı X'i aşabilir. Sıralama mevcut filtrelerdeki kişiler arasında, mekan seçiliyse o mekandaki ortak konser sayısıyla hesaplanır. Eşitlikler müzisyen kimliğine göre çözülür. Seçim URL'de `top` parametresinde saklanır; parametre yoksa tüm bağlar çizilir. Konser eşiği 1+, 2+, 3+, 5+, 10+ veya 50+ seçilir; N+ en az N konseri olanları gösterir ve 1+ filtresiz haritadır. Eşik `min` parametresinde saklanır; eski `min=all` ve `top=all` bağlantıları filtresiz açılır.
-- Bir müzisyenin üzerine gelince filtrelenmiş graf içindeki tüm doğrudan bağları görünür. Tıklayınca sağdaki panel açılır: konser ve bağ sayıları, **grupları** ve en çok birlikte çaldığı kişiler.
-- Paneldeki bir grubun üzerine gelmek, grubun haritadaki yerini halka ve adıyla vurgular; grup ekran dışındaysa kenarda yönünü gösteren bir işaret çıkar. Gruba tıklamak grubu açar ve kamerayı düzenli kadrosuna yaklaştırır; tek konserlik konuk üyeler çerçeveyi büyütmez. Haritadaki grup adlarına tıklamak da grubu açar.
-- Her seçim bir geçmiş kaydıdır. Paneldeki geri / ileri düğmeleri, tarayıcının geri / ileri düğmeleri ve kaydırma hareketleri aynı yolu izler; düğmeler gidilecek kişinin veya grubun adını gösterir. Kapatmak veya `Esc` genel görünüme döner, geri gelmek seçimi geri getirir.
-- Biri seçiliyken başka bir müzisyenin üzerine gelmek aralarındaki **en az bağlantılı yolu** vurgular. Bu hesap, normalde gizlenen zayıf bağları da içerir. Yol mevcut filtrelere uyar.
-- Arama sonuçlarında ve seçili kişinin bağlantı listesinde hover veya klavye odağı da yol gösterir. Türkçe karakter kullanmadan arama yapılabilir.
-- Mekan seçimi, yalnızca o mekanda **aynı konserde** çalan kişilerin bağlarını gösterir. Konser eşiği de seçilen mekandaki konser sayısına uygulanır.
-- Alt soldaki **enstrüman açıklaması** her rengi simgesi ve adıyla gösterir; yanındaki sayı görünümdeki müzisyen sayısıdır. Üflemeliler tek simgeyi paylaşır, bakır ve tahta rengiyle ayrılır. Bir enstrümana tıklamak onu vurgular: ilgili müzisyenler halkalarla işaretlenir; kişileri, bağlantıları, yerleşimi veya yakınlaştırmayı değiştirmez. Hiçbir şey seçili değilken panel bu enstrümanın en çok konser veren müzisyenlerini listeler; seçili tarih aralığı ve mekandaki sayılar kullanılır. Bir isme tıklayınca kişinin paneli açılır. Arama tüm görünür müzisyenleri kapsar. Veride trompet ayrı tutulmadığı için **Bakır üflemeli** grubu kullanılır. Vurgulama, filtreler ve seçili kişi URL'de saklanır.
-- Alttaki zaman çizelgesi 1956'dan kesit tarihine kadar aylık konser yoğunluğunu gösterir. Sağ üstteki okla tek satıra indirilir; bu satır seçili dönemi, Canlı modda oynat düğmesini ve sayıları gösterir. Tercih tarayıcıda hatırlanır. Uçları sürükleyerek veya ay alanlarını girerek aralık seçilir; alt kenarından tutarak aralık taşınır. Çizgiye tıklamak veya sürüklemek gösterilen tarihi değiştirir.
-- Zaman çizelgesindeki **Keşfet / Canlı** seçimi grafın davranışını belirler. Keşfet sabit yerleşimle açılır; tarih ve filtre değişince yeni dönem hesaplanır. Canlı seçildiği anda fizik sürekli çalışır. Oynat ve duraklat yalnızca tarih akışını kontrol eder; tarih sabitken veya aralığın sonuna gelindiğinde fizik devam eder. Yoğun müzisyen girişlerinde tarih akışı yavaşlar. 0,5× / 1× / 2× / 4× hız seçenekleri Canlı modunda görünür.
-- Mod değiştirirken tarih ve filtreler korunur. Tarih veya filtre değiştirmek oynatmayı duraklatır, modu değiştirmez. Canlı seçimi URL’de `experience=live` ile saklanır; sayfa yenilenince tarih sabit kalırken fizik çalışmaya başlar. Keşfet’e dönmek simülasyonu kapatır ve seçili tarihin sabit yerleşimini hesaplar.
-- Aralık uçları klavyeyle birer ay, Shift ile birer yıl değişir; Home ve End sınıra götürür. Tarih aralığı ve oynatma konumu `from`, `to`, `at` parametreleriyle URL'de saklanır. Konser eşiği, mekan filtresi ve enstrüman vurgulaması aynı tarih görünümüne uygulanır.
-- 2D harita her zaman topluluk yerleşimini kullanır: sık birlikte çalanlara ayrı alan açar ve ilişkili toplulukları yakına yerleştirir. Üst çubuktaki **Görünüm** menüsünde **Gruplama** ile geniş, dengeli veya ayrıntılı topluluklar seçilebilir. **Aralık** ile sıkı, dengeli veya ferah görünüm seçilir; bu tercihler URL'de saklanır.
-- Graf tüm ekranı kaplar; arama, filtreler, görünüm ayarları, seçim paneli, enstrüman açıklaması ve zaman çizelgesi grafın üzerinde yüzen panellerdir. Filtreler ve görünüm, düğmelerinin altında açılır ve değişiklikler hemen uygulanır. İsim ve grup etiketi anahtarları Görünüm menüsündedir.
-- Sürükleyerek taşı, kaydırarak veya iki parmakla yakınlaş. Sağ alttaki + / − ve ekrana sığdır düğmeleri de kullanılabilir. Mobilde detaylar alt panelde, filtreler ise sabit sonuç düğmesi olan kaydırılabilir panelde açılır.
-- **2D / 3D** düğmeleriyle görünümü değiştir. 3D modunda ağı sürükleyerek veya graf odaktayken ok tuşlarıyla döndür; Shift + sürükle veya Shift + ok tuşlarıyla taşı. Kaydırarak yakınlaş; dokunmatik ekranda bir parmakla döndür, iki parmakla taşı ve yakınlaş. **Görünümü sıfırla** veya `0` başlangıç açısına döner ve ağı ekrana sığdırır. Arama, seçim, en kısa yol, enstrüman vurgulama ve zaman çizelgesi iki modda da çalışır. 3D modunda bir müzisyene tıklamak veya aramadan seçmek kamerayı onun doğrudan bağlantılarına odaklar; diğer müzisyenler silikleşir. Döndürme seçilen kişinin etrafında yapılır, yakınlaşırken kişi merkezde kalır. Kamera geçişleri yumuşaktır; sürükleme bırakılınca hareket kısa sürede yavaşlar. Azaltılmış hareket tercihinde geçiş ve süzülme kapatılır. Seçimi kaldırmak genel görünüme döner; sıfırlama seçili kişinin ağını yeniden çerçeveler. Görünüm URL'de `view=3d` ile saklanır; 2D'ye dönünce topluluk haritası geri gelir. 3D yerleşimi ngraph ile Web Worker'da üç eksende hesaplanır; derinlik mesafeleri de coğrafya veya zaman ifade etmez.
-
-Kısayollar: `⌘/Ctrl K` arama, `+` / `-` yakınlaştırma, `0` ekrana sığdırma, `Esc` seçimi veya açık kontrolü kapatma.
-
-`⌘/Ctrl K` açık ayar panelini kapatıp aramaya odaklanır. Arama sonuçları kapalıyken kutuya yeniden tıklamak sonuçları açar; aşağı / yukarı ok ilk / son sonuçtan başlar. Arama açıkken ilk `Esc` sonuçları kapatır, sonraki `Esc` seçimi kaldırabilir.
-
-`Esc` önce açık ayar panelini kapatır, sonra seçimi, en son enstrüman vurgulamasını kaldırır. Mobil ayar panelleri açıkken klavye odağı panelde kalır ve kapanınca açan düğmeye döner. 2D seçimler detay panelinin dışında görünür tutulur.
-
-Yerleşim Web Worker'da hesaplanır; filtre değişince önceki hesap iptal edilir. Varsayılan görünümün yerleşimi `data:runtime` sırasında önceden hesaplanıp `runtime.json` ile gelir, bu yüzden ilk açılışta worker çalışmaz. Son hesaplanan sekiz yerleşim bellekte tutulur; aynı filtrelere dönmek yeniden hesap gerektirmez. Topluluklar görünümü tam filtrelenmiş konser grafından bağlı gruplar bulur. Müzisyenler kendi topluluklarında yerleşir; ardından topluluklar aralarındaki ortak konserlere göre konumlanır. Her topluluğun boyutuna göre boşluk ayrılır. Bir veya iki kişilik parçalar en çok birlikte çaldıkları topluluğa katılır. En büyük bağlı ağ ekran oranına göre yatay yayılır ve solda durur; bağlantısız ağlar iç düzenleri korunarak yanında, sınır kutularına göre sıkı satırlar halinde dizilir. Bağlantısız kişiler ayrı alanlara yerleştirilir. Gruplar resmi müzik grupları değildir; gruplar arası uzaklık ilişki gücünü ölçmez. Çizgileri sadeleştirmek bağlantı verisini silmez. Uzaktan bakınca tek konserlik bağlar silikleşir, sık birlikte çalanların bağları koyu ve kalın çizilir; yakınlaştıkça tüm bağlar benzer belirginliğe gelir. Uzun bağlar daha soluk, ekranın büyük kısmını geçen bağlar ise neredeyse saydam çizilir; böylece gruplar bağ örtüsünün altında kaybolmaz. Düğüm büyüklüğü konser sayısını, renk enstrümanı gösterir. Mesafeler coğrafya veya zaman ifade etmez.
-
-Motor karşılaştırması, topluluk yerleşiminin seçim gerekçesi ve ölçümler: [yerleşim araştırması](docs/layout-research.md). Diğer motorlar karşılaştırmadan sonra uygulamadan kaldırıldı. Tüm arşiv ekrana sığdırıldığında yoğun grupları incelemek için yakınlaştırma veya filtreler gerekir.
+`main` dalına her push, [deploy workflow](.github/workflows/deploy.yml) ile testleri çalıştırıp Vercel'e yayınlar (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` secret'ları gerekir).
 
 ## Veri
 
-14 Eylül 2026 kesiti:
+Kaynak: [Bizim Caz konser arşivi](https://bizimcaz.com/concerts), 14 Eylül 2026 kesiti.
 
 | Kayıt                                |   Sayı |
 | ------------------------------------ | -----: |
 | Müzisyen profili                     | 14.714 |
-| İndirilen konser                     | 35.924 |
 | Kesit tarihinden önceki konser       | 35.670 |
 | Konser kadrolarıyla eşleşen müzisyen | 12.077 |
-| Geçmiş konserlerdeki müzisyen çifti  | 95.833 |
+| Birlikte çalmış müzisyen çifti       | 95.833 |
 | Eşleşen müzisyen içeren mekan        |  1.485 |
 
-Kaynak: [Bizim Caz konser arşivi](https://bizimcaz.com/concerts). Tarihi kesit gününden önce olan konserler sayılır; bugünün ve geleceğin programları hariçtir. Aynı konser ve aynı kadro üyesi tek kez sayılır. Bir çiftin ağırlığı **birlikte yer aldıkları farklı konser sayısıdır**. Kadro adları, arşivdeki benzersiz müzisyen adlarıyla eşleştirilir. Eşleşmeyen veya birden fazla kişiye karşılık gelen altı ad tahminle bir kişiye atanmaz.
+Aynı konser ve aynı kadro üyesi tek kez sayılır. Kadro adları arşivdeki benzersiz müzisyen adlarıyla eşleştirilir; belirsiz adlar tahminle atanmaz. Sıfır kayıt, kişinin hiç konser vermediği anlamına gelmez. Grup etiketleri konser başlıklarından türetilir, kalıcı üyelik anlamına gelmez. Topluluklar ve aralarındaki mesafeler yerleşim içindir; tür, coğrafya veya ilişki gücü ölçüsü değildir.
 
-Bu sayılar kaynağın kayıt kapsamını gösterir. Sıfır kayıt, kişinin hiç konser vermediği anlamına gelmez. Mekan kimliği kaynak konser anahtarından alınır. Arşiv; mekan adları, kadrolar veya kişi kimliklerinde kaynak hataları içerebilir.
+| Dosya                            | İçerik                                            |
+| -------------------------------- | ------------------------------------------------- |
+| `data/concerts.json.gz`          | Konser tarihi, mekan ve kadrolar                  |
+| `public/data/concerts.json`      | Konser sayıları, ortak konser bağları ve mekanlar |
+| `public/data/atlas.json`         | Müzisyen profilleri ve önceki kaynak graf arşivi  |
+| `data/source-networks.ndjson.gz` | Önceki toplamada indirilen ham ağ yanıtları       |
+| `data/manifest.json`             | Önceki ağ arşivinin kapsamı ve checksum'ı         |
 
-| Dosya                            | İçerik                                                                                         |
-| -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `data/concerts.json.gz`          | Kaynaktan çıkarılan konser tarihi, mekan ve kadrolar; yeniden üretilebilir sıkıştırılmış kesit |
-| `public/data/concerts.json`      | Konser sayıları, ortak konser bağları, mekanlar ve tarihli sayısal kadrolar                    |
-| `public/data/atlas.json`         | 14.714 profil ve önceki kaynak graf arşivi                                                     |
-| `data/source-networks.ndjson.gz` | Önceki toplamada indirilen 14.714 ham ağ yanıtı                                                |
-| `data/manifest.json`             | Önceki ağ arşivinin kapsamı ve checksum'ı                                                      |
-
-Önceki ağ arşivindeki 118.563 ilişki grup, albüm ve konser ilişkilerini birlikte içerir; kaynak ağırlıkları konser sayısı değildir. Bu arşiv korunur. Yeni arayüzün bağları ve filtreleri ayrı konser kesitini kullanır.
-
-## Veriyi yeniden üretme
+### Yeniden üretme
 
 ```sh
-# Kaynağı okumaz; depodaki konser kesitinden yerel uygulama verisini üretir.
+# Depodaki kesitten uygulama verisini üretir, ağa çıkmaz.
 bun run data:concerts --build
 
-# Halka açık konser sayfalarını GET ile okur. Dört işçi, yerel önbellek.
+# Herkese açık konser sayfalarını okur. Önbellekteki sayfalar yenilenmez;
+# güncel veri için önce .cache/concerts/ klasörünü sil.
 python3 scripts/collect-concerts.py --fetch
 bun run data:concerts --build
 ```
 
-Her iki komut da gerekli bayrak olmadan kullanım bilgisini yazıp çıkar. Veritabanına erişmezler. Toplama başarısız olursa mevcut kesit değiştirilmez; yeniden çalıştırmak önbellekten devam eder. `.cache/concerts/` önbelleği mevcut sayfaları yenilemez. Kesit zamanı ve kapsamı çıktıda saklanır.
+Veri üreten ve toplayan betikler bayraksız çalıştırılınca yalnızca kullanım bilgisini yazar. Toplama başarısız olursa mevcut kesit değişmez.
 
-Önceki ağ arşivini doğrulamak için `bun run data:validate`; arşivden yerel önbellek çıkarmak için `bun run data:restore --restore` kullanılır. Bunlar yeni konser kesitini değiştirmez.
+## Tarayıcı testleri
 
-Önceki ağ verisini yeniden üretmek için `bun run data:build --build`, önbelleği arşivlemek için `bun run data:archive --archive` kullanılır. Bu komutlar mevcut atlası veya arşivi değiştirir; bayrak olmadan yalnızca kullanım bilgisini yazıp çıkar. Boş veya eksik ağ önbelleğiyle atlas yeniden üretilmez. Yeniden üretim yalnızca `.cache/keys.json` içindeki ağ dosyalarını okur; eski önbellek dosyaları dahil edilmez.
-
-## Kontroller
+`scripts/*-check.ts` testleri çalışan bir geliştirme sunucusuna karşı kurulu Chrome ile çalışır:
 
 ```sh
-bun test
-bun run build
-ATLAS_TEST_URL=http://localhost:5173 bun run test:app
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
-ATLAS_TEST_URL=http://localhost:5173 bun run test:ux
-ATLAS_TEST_URL=http://localhost:5173 bun run test:render
-ATLAS_TEST_URL=http://localhost:5173 bun run test:3d
-ATLAS_TEST_URL=http://localhost:5173 bun run test:focus
-ATLAS_TEST_URL=http://localhost:5173 bun run test:timeline
-ATLAS_TEST_URL=http://localhost:5173 bun run test:layouts
-ATLAS_TEST_URL=http://localhost:5173 bun run test:communities
-ATLAS_TEST_URL=http://localhost:5173 bun run test:progress
-bun run benchmark:layouts
-bun run scripts/layout-quality.ts [--min=N]
 ```
 
-`layout-quality`, depodaki veriyle yerleşimi hesaplar; süreyi, ekrana sığdırılmış yakınlaşmayı, işaret örtüşmelerini, en yakın komşuların gerçek iş birlikçi olma oranını (`knnPrecision`) ve bağ uzunluklarını yazar. Görsel kontrol için `.cache/quality-*.png` üretir; `--no-png` ile yalnızca ölçüm yapar.
+Diğerleri: `test:app`, `test:ux`, `test:render`, `test:3d`, `test:focus`, `test:timeline`, `test:layouts`, `test:communities`, `test:progress`, `test:physics`, `test:search`. Ölçümler: `bun run benchmark:layouts`, `bun run benchmark:search --baseline <commit>`, `bun run scripts/layout-quality.ts`.
 
-Arama performansını önceki sürümle karşılaştırmak için `bun run benchmark:search --baseline 8a22b70` kullanılır. Depodaki veriyle sonuç sırasını doğrular ve önbellek ısındıktan sonra beş adet 100 sorguluk ölçümün ortancasını raporlar. Bu ölçüm Bun içindeki arama hesabıdır; tarayıcı etkileşim süresi değildir. `test:render`, yerel geliştirme sunucusunda canlı grafın çizim süresini raporlar, sabit panellerin her karede yeniden ölçülmediğini ve 3D tekerlek yakınlaştırmasının canlı fizik tarafından geri alınmadığını doğrular.
+## Lisans
 
-Birim testleri; kişi başına en güçlü bağlantı seçimini, en kısa yolu, eşik sınırını, birlikte uygulanan filtreleri, konser tekilleştirmeyi, tarih kapsamını, ad belirsizliğini ve mekandaki gerçek ortak kadroları kontrol eder.
-
-UI testi yalnızca yerel sunucuda, kurulu Chrome ile çalışır. Canvas hover, seçiliyken hover yolu, filtreler, URL'den geri yükleme, mobil overlay'ler, klavye kullanımı ve veri yükleme hatasından dönüşü doğrular. Ekran görüntüleri `.cache/minimal-*.png` altında tutulur.
-
-Zaman çizelgesi testi, gerçek veriden beklenen tarih ve mekan sonuçlarını, yeniden hesaplanan düğüm konumlarını, hesaplama göstergesini, oynat/duraklat davranışını, URL geri yüklemeyi, aralık sürüklemeyi ve mobil dokunmayı doğrular. Ekran görüntüleri `.cache/timeline-*.png` altında tutulur.
-
-Grup / proje adları, haritada kendi şeklini oluşturan kadroların üzerine yazılır. Kadronun görünen üyelerinin çoğu bir arada durmalı, o alandaki işaretlerin en az yarısı kadrodan olmalı ve üyeler ortak konserlerinin en az %30'unu birbirleriyle vermiş olmalıdır. Kadro büyüklüğü sınırı yoktur; büyük orkestralar da trio'lar da adlandırılır. Başka sahnelerde çalan yan müzisyenlerden oluşan dağınık kadrolar etiketlenmez. Aynı üyeleri paylaşan sürümlerden (quartet / quintet gibi) yalnızca biri yazılır. Etiket şeklin ekrandaki büyüklüğüyle büyür: uzaktan en büyük gruplar, yakınlaştıkça küçükleri görünür. Yeterince büyük şekillerin adı ortada, küçüklerin adı üstte durur; sekiz ve daha fazla kişilik grupların altında hafif bir zemin çizilir. Harita etiketinde program alt başlıkları ve parantez içindeki şef / solist bilgileri kısaltılır. Bir müzisyen seçiliyken grup adları soluklaşır, seçili kişilerin etiketleri öne geçer. Seçim paneli ilgili tüm projeleri ve konser sayılarını listeler. Görünüm menüsünde grup etiketleri kapatılabilir; mekan filtresi yalnızca o mekandaki kadroları kullanır.
-
-Etiketler konser başlıklarından alınır, kalıcı grup üyeliği anlamına gelmez. Tek müzisyenin adıyla verilen konserler, genel jam session / açık sahne başlıkları ve iki müzisyenle eşleşmeyen kadrolar etiket oluşturmaz.
-
-Başlıkları mevcut HTML önbelleğinden, ağ erişimi olmadan yeniden çıkarmak için:
-
-```sh
-python3 scripts/collect-concerts.py --from-cache
-bun run data:concerts --build
-```
-
-Bu işlem kesit tarihini korur ve eksik önbellekte durur.
-
-Arama kutusu müzisyenleri ve konser başlıklarından türetilen grupları birlikte arar. Tümü / Müzisyenler / Gruplar seçenekleri ve Türkçe karakter kullanmadan arama desteklenir. Grup sonuçları seçili tarih ve mekana uyar; konser eşiğinin gizlediği kadro üyeleri panelden görünür hale getirilebilir. Seçili grubun kadrosu haritada vurgulanır ve `g` URL parametresiyle paylaşılır. Kadrodaki bir isme tıklamak müzisyenin bağlantılarını açar.
-
-Seçili müzisyenin portresi Bizim Caz profil görselinden doğrudan yüklenir; fotoğraf bulunamaz veya yüklenemezse baş harfleri gösterilir. Görselin altındaki kaynak bağlantısı müzisyenin profilini açar. Portreler yalnızca seçim yapıldığında istenir; başlangıç veri paketine eklenmez.
-
-`ATLAS_TEST_URL=http://localhost:5173 bun run test:search` masaüstü ve mobil portreleri, fotoğraf hatasından dönüşü, grup aramasını, klavye seçimini, kadrodan müzisyene geçişi, URL geri yüklemeyi ve grup verisi yükleme hatasından dönüşü kontrol eder.
+Kod [MIT](LICENSE) lisanslıdır. Konser ve müzisyen verileri ile portreler Bizim Caz'a aittir.

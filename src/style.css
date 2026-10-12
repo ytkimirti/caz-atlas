@@ -202,6 +202,13 @@ input[type="checkbox"] {
   padding: 0 11px;
   font-size: 12.5px;
 }
+.source-link {
+  margin-left: 2px;
+  border-radius: 8px;
+}
+.source-link:hover {
+  background: var(--accent-soft);
+}
 .toolbar-button.active {
   color: var(--accent);
   background: var(--accent-soft);
@@ -1822,11 +1829,28 @@ input[type="checkbox"] {
     font-size: 10px;
   }
 }
+@media (max-width: 400px) {
+  .toolbar-button {
+    width: 32px;
+  }
+  .view-switch {
+    margin-left: 2px;
+  }
+  .view-switch button {
+    min-width: 28px;
+    padding: 0 4px;
+  }
+}
 @media (max-width: 370px) {
   .wordmark {
     font-size: 18px;
   }
   .timeline:not(.is-collapsed) .timeline-stats {
+    display: none;
+  }
+}
+@media (max-width: 359px) {
+  .source-link {
     display: none;
   }
 }

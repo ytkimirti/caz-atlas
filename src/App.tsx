@@ -4,6 +4,7 @@ import {
   AudioLines,
   Check,
   Focus,
+  Github,
   Minus,
   Plus,
   Settings2,
@@ -1029,6 +1030,16 @@ function AtlasApp({
               </button>
             ))}
           </div>
+          <a
+            className="toolbar-button source-link"
+            href="https://github.com/ytkimirti/caz-atlas"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Kaynak kod"
+            title="Kaynak kod"
+          >
+            <Github size={15} />
+          </a>
         </div>
       </header>
 
