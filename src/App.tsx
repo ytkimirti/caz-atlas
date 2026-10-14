@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Network as NetworkIcon,
   ArrowLeftRight,
@@ -433,6 +441,13 @@ export default function App() {
   return <AtlasApp data={data} concerts={data.concerts} />;
 }
 
+// Hovering the map re-renders the app on every marker; the panels and the
+// timeline only change with selection, dates or data.
+const EnsemblePanel = memo(EnsembleInspector);
+const PairPanel = memo(PairInspector);
+const MusicianPanel = memo(MusicianInspector);
+const InstrumentPanel = memo(InstrumentInspector);
+
 const EMPTY_ENSEMBLES: Ensemble[] = [];
 const EMPTY_IDS: number[] = [];
 // "N+" keeps musicians with at least N concerts; 1+ is the unfiltered map.
@@ -528,23 +543,26 @@ function AtlasApp({
   const [timelineCollapsed, setTimelineCollapsed] = useState(
     () => localStorage.getItem(TIMELINE_KEY) === "1",
   );
-  function changeTimelineCollapsed(collapsed: boolean) {
+  const changeTimelineCollapsed = useCallback((collapsed: boolean) => {
     setTimelineCollapsed(collapsed);
     localStorage.setItem(TIMELINE_KEY, collapsed ? "1" : "0");
-  }
+  }, []);
   const changePlaying = useCallback((next: boolean) => {
     setPlaying(next);
   }, []);
-  function changeExperience(live: boolean) {
-    if (live === livePhysics) return;
-    setPlaying(false);
-    setLivePhysics(live);
-  }
-  function changeRange(next: DateRange) {
+  const changeExperience = useCallback(
+    (live: boolean) => {
+      if (live === livePhysics) return;
+      setPlaying(false);
+      setLivePhysics(live);
+    },
+    [livePhysics],
+  );
+  const changeRange = useCallback((next: DateRange) => {
     setPlaying(false);
     setRange(next);
     setCursor(next[1]);
-  }
+  }, []);
   const [minConcerts, setMinConcerts] = useState<number | null>(() =>
     readMinimum(params.get("min")),
   );
@@ -1185,30 +1203,51 @@ function AtlasApp({
     back: nav.back,
     forward: nav.forward,
   };
-  const actions = {
-    next: nav.next ?? null,
-    onMusician: pick,
-    onEnsemble: openEnsemble,
-    onPreviewEnsemble: setPreviewEnsembleId,
-    onHover: setHoveredId,
-    onInstrument: setInstrument,
-    onPair: (id: number, other: number) => {
+  // Handlers read the latest render through a ref, so the panels keep one
+  // actions object and skip re-rendering while the pointer moves.
+  const latest = {
+    pick,
+    pair(id: number, other: number) {
       if (!visibleIds.has(id) || !visibleIds.has(other)) setMinConcerts(null);
       setHoveredId(null);
       navigate({ kind: "pair", id, other });
     },
-    onVenue: (id: string) => {
+    venue(id: string) {
       if (city && venuesById.get(id)?.city !== city) setCity("");
       setVenueId(id);
       setHoveredId(null);
     },
   };
-  const dates = {
-    range: [range[0], cursor] as DateRange,
-    bounds,
-    onRange: changeRange,
-    minimum: moreThan ?? 0,
-  };
+  const handlers = useRef(latest);
+  useLayoutEffect(() => {
+    handlers.current = latest;
+  });
+  const next = nav.next ?? null;
+  const actions = useMemo(
+    () => ({
+      next,
+      onMusician: (id: number) => handlers.current.pick(id),
+      onEnsemble: openEnsemble,
+      onPreviewEnsemble: setPreviewEnsembleId,
+      onHover: setHoveredId,
+      onInstrument: setInstrument,
+      onPair: (id: number, other: number) => handlers.current.pair(id, other),
+      onVenue: (id: string) => handlers.current.venue(id),
+    }),
+    [next, openEnsemble],
+  );
+  const dates = useMemo(
+    () => ({
+      range: [range[0], cursor] as DateRange,
+      bounds,
+      onRange: changeRange,
+      minimum: moreThan ?? 0,
+    }),
+    [range, cursor, bounds, changeRange, moreThan],
+  );
+  const frameGroup = useCallback(() => network.current?.frameGroup(), []);
+  const revealAll = useCallback(() => setMinConcerts(null), []);
+  const retryProjects = useCallback(() => setProjectAttempt((n) => n + 1), []);
   const place = venue
     ? venue.name
     : city
@@ -1714,20 +1753,20 @@ function AtlasApp({
           }
         >
           {selectedEnsemble ? (
-            <EnsembleInspector
+            <EnsemblePanel
               key={selectedEnsemble.id}
               ensemble={selectedEnsemble}
               members={ensembleMembers}
               visibleIds={visibleIds}
               place={place}
-              onFrame={() => network.current?.frameGroup()}
-              onRevealAll={() => setMinConcerts(null)}
+              onFrame={frameGroup}
+              onRevealAll={revealAll}
               history={ensembleHistory}
               source={concertSource}
               actions={actions}
             />
           ) : musician && partner ? (
-            <PairInspector
+            <PairPanel
               key={`${musician.id}:${partner.id}`}
               musician={musician}
               other={partner}
@@ -1741,7 +1780,7 @@ function AtlasApp({
               actions={actions}
             />
           ) : musician ? (
-            <MusicianInspector
+            <MusicianPanel
               key={musician.id}
               musician={musician}
               concerts={counts[musician.id] ?? 0}
@@ -1749,7 +1788,7 @@ function AtlasApp({
               ensembles={musicianEnsembles}
               byId={byId}
               projects={projects ? "ready" : projectError ? "error" : "loading"}
-              onRetryProjects={() => setProjectAttempt((n) => n + 1)}
+              onRetryProjects={retryProjects}
               history={musicianHistory}
               career={musicianCareer}
               venues={musicianVenues}
@@ -1760,7 +1799,7 @@ function AtlasApp({
               actions={actions}
             />
           ) : (
-            <InstrumentInspector
+            <InstrumentPanel
               group={instrument}
               musicians={highlightedMusicians}
               counts={counts}

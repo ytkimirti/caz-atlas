@@ -103,7 +103,8 @@ export const groupId = (group: string) =>
   group === "Brass" || group === "Woodwinds" ? "Winds" : group;
 export const groupInfo = (id: string) =>
   groups.find((g) => g.id === groupId(id)) || groups[groups.length - 1];
-export const number = (n: number) => n.toLocaleString("tr-TR");
+const numberFormat = new Intl.NumberFormat("tr-TR");
+export const number = (n: number) => numberFormat.format(n);
 export const normalize = (text: string) =>
   text
     .toLocaleLowerCase("tr-TR")

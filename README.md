@@ -81,7 +81,7 @@ Veri üreten ve toplayan betikler bayraksız çalıştırılınca yalnızca kull
 ATLAS_TEST_URL=http://localhost:5173 bun run test:ui
 ```
 
-Diğerleri: `test:app`, `test:ux`, `test:render`, `test:3d`, `test:focus`, `test:timeline`, `test:layouts`, `test:communities`, `test:progress`, `test:physics`, `test:search`. Ölçümler: `bun run benchmark:layouts`, `bun run benchmark:search --baseline <commit>`, `bun run scripts/layout-quality.ts`.
+Diğerleri: `test:app`, `test:ux`, `test:render`, `test:3d`, `test:focus`, `test:timeline`, `test:layouts`, `test:communities`, `test:progress`, `test:physics`, `test:search`. Ölçümler: `bun run benchmark:layouts`, `bun run benchmark:interaction` (üretim derlemesine karşı; `RUNS`, `ONLY`, `PROFILE`), `bun run benchmark:search --baseline <commit>`, `bun run scripts/layout-quality.ts`.
 
 ## Lisans
 

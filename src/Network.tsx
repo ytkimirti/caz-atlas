@@ -81,7 +81,10 @@ const LONG_EDGE_ALPHA = 0.25;
 // Ties crossing most of the screen say little about the groups they cross.
 const SPANNING_EDGE = 600;
 const SPANNING_EDGE_ALPHA = 0.1;
-const edgeStyles = new Map<number, { color: string; width: number }>();
+const edgeStyles = new Map<
+  number,
+  { color: string; alpha: number; width: number }
+>();
 function edgeStyle(tier: number, zoom: number) {
   // Quantized so a zoom gesture reuses a handful of style strings.
   const step = Math.round(
@@ -93,12 +96,26 @@ function edgeStyle(tier: number, zoom: number) {
     const t = step / 20,
       { far, near, rgb } = EDGE_STYLE[tier];
     style = {
-      color: `rgba(${rgb}, ${(far[0] + (near[0] - far[0]) * t).toFixed(3)})`,
+      color: `rgb(${rgb})`,
+      alpha: Number((far[0] + (near[0] - far[0]) * t).toFixed(3)),
       width: far[1] + (near[1] - far[1]) * t,
     };
     edgeStyles.set(key, style);
   }
   return style;
+}
+// Ties per stroke on the scratch layer. One path holding every tie makes the
+// rasterizer resolve all overlaps at once, which costs seconds per frame.
+const STROKE_CHUNK = 16;
+interface Clip {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+function layer() {
+  const canvas = document.createElement("canvas");
+  return { canvas, ctx: canvas.getContext("2d")! };
 }
 
 const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
@@ -131,42 +148,46 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     () => new Set(props.edges.map((e) => edgeKey(e.source, e.target))),
     [props.edges],
   );
+  // Separate memos keep the cached marker layer valid while hover moves the path.
+  const connected = useMemo(
+    () =>
+      new Set(
+        props.selected === null
+          ? []
+          : [
+              props.selected,
+              ...(neighbors.get(props.selected) ?? []).map((n) => n.id),
+            ],
+      ),
+    [props.selected, neighbors],
+  );
+  const groupMembers = useMemo(
+    () => new Set(props.highlightedIds),
+    [props.highlightedIds],
+  );
+  const highlighted = useMemo(
+    () =>
+      new Set(
+        props.data.nodes
+          .filter(
+            (node) =>
+              groupMembers.has(node.id) || node.group === props.instrument,
+          )
+          .map((node) => node.id),
+      ),
+    [groupMembers, props.data, props.instrument],
+  );
   const emphasis = useMemo(() => {
-    const connected = new Set(
-      props.selected === null
-        ? []
-        : [
-            props.selected,
-            ...(neighbors.get(props.selected) ?? []).map((n) => n.id),
-          ],
-    );
     const routeNodes = new Set(props.path);
-    const routeEdges = pathEdges(props.path);
-    const groupMembers = new Set(props.highlightedIds);
-    const highlighted = new Set(
-      props.data.nodes
-        .filter(
-          (node) =>
-            groupMembers.has(node.id) || node.group === props.instrument,
-        )
-        .map((node) => node.id),
-    );
     return {
       connected,
       routeNodes,
-      routeEdges,
+      routeEdges: pathEdges(props.path),
       groupMembers,
       highlighted,
       emphasized: new Set([...connected, ...routeNodes]),
     };
-  }, [
-    props.selected,
-    neighbors,
-    props.path,
-    props.highlightedIds,
-    props.data,
-    props.instrument,
-  ]);
+  }, [connected, props.path, groupMembers, highlighted]);
   const drawOrder = useMemo(() => {
     const { emphasized, highlighted, routeNodes } = emphasis;
     const nodes = props.layoutData.nodes;
@@ -278,7 +299,10 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ),
     );
     const plain = new Uint8Array(nodes.length);
+    // Bumped whenever projected positions move, so cached layers know.
+    let projectionVersion = 0;
     function updateProjection() {
+      projectionVersion++;
       const nextRadius = orbitRadius(scene, pivot);
       projectionRadius = props.livePhysics
         ? Math.max(projectionRadius, nextRadius)
@@ -320,10 +344,341 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       edgeCache = { edges, a, b, offsets };
       return edgeCache;
     }
-    function setEdgeStyle(tier: number, zoom: number) {
-      const style = edgeStyle(tier, zoom);
-      ctx.strokeStyle = style.color;
-      ctx.lineWidth = style.width;
+    // Translucent ties are stroked opaque on a scratch layer in small chunks,
+    // then composited at their alpha: overlaps still blend once, as in a
+    // single path, at a fraction of the rasterization cost.
+    const scratch = layer();
+    let segments = new Float64Array(4096),
+      segmentCount = 0,
+      segMinX = Infinity,
+      segMinY = Infinity,
+      segMaxX = -Infinity,
+      segMaxY = -Infinity;
+    function pushSegment(ax: number, ay: number, bx: number, by: number) {
+      if ((segmentCount + 1) * 4 > segments.length) {
+        const grown = new Float64Array(segments.length * 2);
+        grown.set(segments);
+        segments = grown;
+      }
+      const k = segmentCount++ * 4;
+      segments[k] = ax;
+      segments[k + 1] = ay;
+      segments[k + 2] = bx;
+      segments[k + 3] = by;
+      segMinX = Math.min(segMinX, ax, bx);
+      segMinY = Math.min(segMinY, ay, by);
+      segMaxX = Math.max(segMaxX, ax, bx);
+      segMaxY = Math.max(segMaxY, ay, by);
+    }
+    function flushSegments(
+      dest: CanvasRenderingContext2D,
+      color: string,
+      lineWidth: number,
+      alpha: number,
+      clip: Clip,
+      union: boolean,
+    ) {
+      const count = segmentCount,
+        pad = lineWidth + 2;
+      segmentCount = 0;
+      const x0 = Math.max(
+          0,
+          Math.floor(Math.max(clip.x0, segMinX - pad) * ratio),
+        ),
+        y0 = Math.max(0, Math.floor(Math.max(clip.y0, segMinY - pad) * ratio)),
+        x1 = Math.min(
+          canvas.width,
+          Math.ceil(Math.min(clip.x1, segMaxX + pad) * ratio),
+        ),
+        y1 = Math.min(
+          canvas.height,
+          Math.ceil(Math.min(clip.y1, segMaxY + pad) * ratio),
+        );
+      segMinX = segMinY = Infinity;
+      segMaxX = segMaxY = -Infinity;
+      if (!count || x1 <= x0 || y1 <= y0 || alpha <= 0) return;
+      // Ties no wider than a device pixel rasterize as hairlines, which are
+      // cheap and add up where they overlap, so they go straight to the target.
+      if (!union) {
+        dest.save();
+        dest.setTransform(ratio, 0, 0, ratio, 0, 0);
+        dest.globalAlpha = alpha;
+        dest.strokeStyle = color;
+        dest.lineWidth = lineWidth;
+        dest.beginPath();
+        for (let k = 0; k < count * 4; k += 4) {
+          dest.moveTo(segments[k], segments[k + 1]);
+          dest.lineTo(segments[k + 2], segments[k + 3]);
+        }
+        dest.stroke();
+        dest.restore();
+        return;
+      }
+      // A fresh bitmap the size of the region: drawing into the scratch layer
+      // while the last composite still holds it would copy the whole layer.
+      const s = scratch.ctx;
+      scratch.canvas.width = x1 - x0;
+      scratch.canvas.height = y1 - y0;
+      s.setTransform(ratio, 0, 0, ratio, -x0, -y0);
+      s.strokeStyle = color;
+      s.lineWidth = lineWidth;
+      for (let start = 0; start < count; start += STROKE_CHUNK) {
+        s.beginPath();
+        const end = Math.min(count, start + STROKE_CHUNK) * 4;
+        for (let k = start * 4; k < end; k += 4) {
+          s.moveTo(segments[k], segments[k + 1]);
+          s.lineTo(segments[k + 2], segments[k + 3]);
+        }
+        s.stroke();
+      }
+      dest.save();
+      dest.setTransform(1, 0, 0, 1, 0, 0);
+      dest.globalAlpha = alpha;
+      dest.drawImage(scratch.canvas, x0, y0);
+      dest.restore();
+    }
+    // Settled ties and resting markers only change with zoom, layout or data.
+    // Hover and selection draw on top of the cached pixels; a pan shifts them
+    // and paints just the uncovered strips.
+    type CachedLayer = ReturnType<typeof layer> & {
+      inputs: unknown[];
+      panX: number;
+      panY: number;
+      /** Drawn in the cheaper motion style; redrawn once motion stops. */
+      fast: boolean;
+    };
+    const cachedLayer = (): CachedLayer => ({
+      ...layer(),
+      inputs: [],
+      panX: 0,
+      panY: 0,
+      fast: false,
+    });
+    const tieLayer = cachedLayer(),
+      focusLayer = cachedLayer(),
+      markerLayer = cachedLayer();
+    function refreshLayer(
+      cache: CachedLayer,
+      inputs: unknown[],
+      render: (
+        dest: CanvasRenderingContext2D,
+        clip: Clip,
+        fast: boolean,
+      ) => void,
+      fast = false,
+    ) {
+      const { canvas: pixels, ctx: dest } = cache;
+      const same =
+        (fast || !cache.fast) &&
+        inputs.length === cache.inputs.length &&
+        inputs.every((value, i) => value === cache.inputs[i]);
+      cache.inputs = inputs;
+      const dx = (panX - cache.panX) * ratio,
+        dy = (panY - cache.panY) * ratio;
+      const sx = Math.round(dx),
+        sy = Math.round(dy);
+      dest.setTransform(1, 0, 0, 1, 0, 0);
+      if (
+        same &&
+        Math.abs(dx - sx) < 1e-3 &&
+        Math.abs(dy - sy) < 1e-3 &&
+        Math.abs(sx) < pixels.width &&
+        Math.abs(sy) < pixels.height
+      ) {
+        if (!sx && !sy) return;
+        dest.globalCompositeOperation = "copy";
+        dest.drawImage(pixels, sx, sy);
+        dest.globalCompositeOperation = "source-over";
+        cache.panX += sx / ratio;
+        cache.panY += sy / ratio;
+        const strips: [number, number, number, number][] = [];
+        if (sx)
+          strips.push([
+            sx > 0 ? 0 : pixels.width + sx,
+            0,
+            Math.abs(sx),
+            pixels.height,
+          ]);
+        if (sy)
+          strips.push([
+            0,
+            sy > 0 ? 0 : pixels.height + sy,
+            pixels.width,
+            Math.abs(sy),
+          ]);
+        for (const [x, y, w, h] of strips) {
+          dest.clearRect(x, y, w, h);
+          dest.save();
+          dest.beginPath();
+          dest.rect(x, y, w, h);
+          dest.clip();
+          render(
+            dest,
+            {
+              x0: x / ratio,
+              y0: y / ratio,
+              x1: (x + w) / ratio,
+              y1: (y + h) / ratio,
+            },
+            cache.fast,
+          );
+          dest.restore();
+        }
+        return;
+      }
+      if (pixels.width !== canvas.width || pixels.height !== canvas.height) {
+        pixels.width = canvas.width;
+        pixels.height = canvas.height;
+      } else dest.clearRect(0, 0, pixels.width, pixels.height);
+      cache.panX = panX;
+      cache.panY = panY;
+      cache.fast = fast;
+      render(dest, { x0: 0, y0: 0, x1: width, y1: height }, fast);
+    }
+    function blit(cache: CachedLayer) {
+      if (!cache.canvas.width || !cache.canvas.height) return;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(cache.canvas, 0, 0);
+      ctx.restore();
+    }
+    // A stroke reaches `pad` past its endpoints' box; strips rendered after a
+    // pan must still draw the part of a tie that crosses their seam.
+    const outside = (
+      ax: number,
+      ay: number,
+      bx: number,
+      by: number,
+      clip: Clip,
+      pad = 0,
+    ) =>
+      (ax < clip.x0 - pad && bx < clip.x0 - pad) ||
+      (ay < clip.y0 - pad && by < clip.y0 - pad) ||
+      (ax > clip.x1 + pad && bx > clip.x1 + pad) ||
+      (ay > clip.y1 + pad && by > clip.y1 + pad);
+    // Settled graph: index-based segments, one composite per weight tier and
+    // length class. Screen-spanning ties are dimmed so they do not veil groups.
+    // In motion, ties wider than a device pixel become hairlines carrying the
+    // same ink, which rasterize several times faster.
+    function renderTies(
+      dest: CanvasRenderingContext2D,
+      clip: Clip,
+      fast: boolean,
+    ) {
+      const { a, b, offsets } = edgeArrays(state.current.edges);
+      const long = LONG_EDGE * LONG_EDGE,
+        spanning = SPANNING_EDGE * SPANNING_EDGE;
+      for (let tier = 0; tier < EDGE_TIERS; tier++) {
+        const from = offsets[tier],
+          to = offsets[tier + 1];
+        if (from === to) continue;
+        const style = edgeStyle(tier, zoom);
+        for (let pass = 0; pass < 3; pass++) {
+          for (let k = from; k < to; k++) {
+            const i = a[k],
+              j = b[k];
+            if (i < 0 || j < 0) continue;
+            const ax = projX[i] * zoom + panX,
+              ay = projY[i] * zoom + panY,
+              bx = projX[j] * zoom + panX,
+              by = projY[j] * zoom + panY;
+            if (outside(ax, ay, bx, by, clip, 2)) continue;
+            // Sub-pixel ties are hidden under their markers anyway.
+            const dx = bx - ax,
+              dy = by - ay;
+            const length = dx * dx + dy * dy;
+            if (length < 1) continue;
+            if ((length > long ? (length > spanning ? 2 : 1) : 0) !== pass)
+              continue;
+            pushSegment(ax, ay, bx, by);
+          }
+          const thick = style.width * ratio > 1;
+          flushSegments(
+            dest,
+            style.color,
+            fast && thick ? 1 / ratio : style.width,
+            Math.min(
+              1,
+              style.alpha *
+                [1, LONG_EDGE_ALPHA, SPANNING_EDGE_ALPHA][pass] *
+                (fast && thick ? style.width * ratio : 1),
+            ),
+            clip,
+            thick,
+          );
+        }
+      }
+    }
+    // The selected musician's ties. Scale shared concert counts without letting
+    // a frequent tie dominate; paint stronger ties last so they stay clear.
+    function renderFocusTies(dest: CanvasRenderingContext2D, clip: Clip) {
+      const s = state.current,
+        focus = s.selected;
+      if (focus === null) return;
+      dest.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const ties = (s.neighbors.get(focus) ?? [])
+        .map((n) => s.edgesByKey.get(edgeKey(focus, n.id))!)
+        .sort((a, b) => a.weight - b.weight);
+      for (const edge of ties) {
+        const a = projected.get(edge.source),
+          b = projected.get(edge.target);
+        if (!a || !b) continue;
+        const ax = a.x * zoom + panX,
+          ay = a.y * zoom + panY,
+          bx = b.x * zoom + panX,
+          by = b.y * zoom + panY;
+        if (outside(ax, ay, bx, by, clip, 3)) continue;
+        const other = edge.source === focus ? edge.target : edge.source;
+        const strength = s.connectionStrengths.get(other)!;
+        dest.beginPath();
+        dest.strokeStyle = `rgba(40, 100, 77, ${0.25 + 0.7 * strength})`;
+        dest.lineWidth = 0.7 + 3.3 * strength;
+        dest.moveTo(ax, ay);
+        dest.lineTo(bx, by);
+        dest.stroke();
+      }
+    }
+    // Unemphasized, fully faded-in markers share one fill per color.
+    // Tiny ones become squares of equal area, which rasterize faster.
+    function renderMarkers(dest: CanvasRenderingContext2D, clip: Clip) {
+      dest.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const counts = state.current.counts,
+        grow = Math.sqrt(zoom);
+      for (let color = 0; color < palette.length; color++) {
+        dest.beginPath();
+        let any = false;
+        for (const i of byColor[color]) {
+          if (!plain[i]) continue;
+          const x = projX[i] * zoom + panX,
+            y = projY[i] * zoom + panY;
+          // radius() without the 3D scale lookup.
+          const r = Math.max(
+            0.75,
+            Math.min(
+              9,
+              (2 + Math.log2(1 + (counts[nodes[i].id] || 1)) * 0.5) * grow,
+            ),
+          );
+          if (
+            x + r + 1 < clip.x0 ||
+            y + r + 1 < clip.y0 ||
+            x - r - 1 > clip.x1 ||
+            y - r - 1 > clip.y1
+          )
+            continue;
+          if (r < 1.25) {
+            const half = r * 0.886;
+            dest.rect(x - half, y - half, half * 2, half * 2);
+          } else {
+            dest.moveTo(x + r, y);
+            dest.arc(x, y, r, 0, Math.PI * 2);
+          }
+          any = true;
+        }
+        if (!any) continue;
+        dest.fillStyle = palette[color];
+        dest.fill();
+      }
     }
     const animatedEdges = new Map(
       props.edges.map((edge) => [
@@ -336,6 +691,9 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       fading = true;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let lastFrame = 0;
+    // Until then the view counts as moving; see draw.
+    let motionUntil = 0,
+      settleTimer = 0;
     const ranked = [...nodes].sort(
       (a, b) =>
         (props.layoutCounts[b.id] || b.degree) -
@@ -1031,6 +1389,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         return;
       }
       if (pointers.size > 1) {
+        motionUntil = performance.now() + 150;
         yawVelocity = pitchVelocity = 0;
         const other = [...pointers.entries()].find(
           ([id]) => id !== event.pointerId,
@@ -1045,6 +1404,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         moved = true;
       } else if (moved || Math.hypot(p.x - startX, p.y - startY) > 4) {
         if (spatial && !event.shiftKey) {
+          motionUntil = performance.now() + 150;
           const elapsed = Math.max(
             8,
             Math.min(40, event.timeStamp - orbitTime),
@@ -1103,6 +1463,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     function wheel(event: WheelEvent) {
       event.preventDefault();
       autoFrame = false;
+      motionUntil = performance.now() + 150;
       const p = local(event);
       const delta =
         event.deltaY *
@@ -1400,56 +1761,32 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      const view = { x0: 0, y0: 0, x1: width, y1: height };
+      // Zooming, orbiting and camera moves redraw the ties every frame. Live
+      // physics never rests, so it keeps the regular style.
+      const moving =
+        now < motionUntil ||
+        (camera !== null && !props.livePhysics) ||
+        (spatial &&
+          !pointers.size &&
+          !motion.matches &&
+          Math.hypot(yawVelocity, pitchVelocity) > 0.00002);
       if (!fading) {
-        // Settled graph: index-based segments, one stroke per weight tier.
-        // Screen-spanning ties are dimmed so they do not veil the groups.
-        const { a, b, offsets } = edgeArrays(s.edges);
-        const long = LONG_EDGE * LONG_EDGE,
-          spanning = SPANNING_EDGE * SPANNING_EDGE;
-        for (let tier = 0; tier < EDGE_TIERS; tier++) {
-          const from = offsets[tier],
-            to = offsets[tier + 1];
-          if (from === to) continue;
-          setEdgeStyle(tier, zoom);
-          const far = new Path2D(),
-            across = new Path2D();
-          ctx.beginPath();
-          for (let k = from; k < to; k++) {
-            const i = a[k],
-              j = b[k];
-            if (i < 0 || j < 0) continue;
-            const ax = projX[i] * zoom + panX,
-              ay = projY[i] * zoom + panY,
-              bx = projX[j] * zoom + panX,
-              by = projY[j] * zoom + panY;
-            if (
-              (ax < 0 && bx < 0) ||
-              (ay < 0 && by < 0) ||
-              (ax > width && bx > width) ||
-              (ay > height && by > height)
-            )
-              continue;
-            // Sub-pixel ties are hidden under their markers anyway.
-            const dx = bx - ax,
-              dy = by - ay;
-            const length = dx * dx + dy * dy;
-            if (length < 1) continue;
-            if (length > long) {
-              const path = length > spanning ? across : far;
-              path.moveTo(ax, ay);
-              path.lineTo(bx, by);
-              continue;
-            }
-            ctx.moveTo(ax, ay);
-            ctx.lineTo(bx, by);
-          }
-          ctx.stroke();
-          ctx.globalAlpha = LONG_EDGE_ALPHA;
-          ctx.stroke(far);
-          ctx.globalAlpha = SPANNING_EDGE_ALPHA;
-          ctx.stroke(across);
-          ctx.globalAlpha = 1;
-        }
+        refreshLayer(
+          tieLayer,
+          [zoom, projectionVersion, canvas.width, canvas.height, s.edges],
+          renderTies,
+          moving,
+        );
+        blit(tieLayer);
+        if (tieLayer.fast && !settleTimer)
+          settleTimer = window.setTimeout(
+            () => {
+              settleTimer = 0;
+              invalidateFrame();
+            },
+            Math.max(0, motionUntil - now) + 20,
+          );
       } else {
         // Fading ties batch by tier and a quantized opacity.
         const batches = new Map<number, Edge[]>();
@@ -1462,11 +1799,25 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           else batches.set(key, [edge]);
         }
         for (const key of [...batches.keys()].sort((x, y) => x - y)) {
-          setEdgeStyle(key >> 4, zoom);
-          ctx.globalAlpha = (key & 15) / 8;
-          ctx.beginPath();
-          for (const edge of batches.get(key)!) line(edge);
-          ctx.stroke();
+          const style = edgeStyle(key >> 4, zoom);
+          for (const edge of batches.get(key)!) {
+            const a = projected.get(edge.source),
+              b = projected.get(edge.target);
+            if (!a || !b) continue;
+            const ax = a.x * zoom + panX,
+              ay = a.y * zoom + panY,
+              bx = b.x * zoom + panX,
+              by = b.y * zoom + panY;
+            if (!outside(ax, ay, bx, by, view)) pushSegment(ax, ay, bx, by);
+          }
+          flushSegments(
+            ctx,
+            style.color,
+            style.width,
+            (style.alpha * (key & 15)) / 8,
+            view,
+            style.width * ratio > 1,
+          );
         }
       }
       ctx.globalAlpha = 1;
@@ -1488,20 +1839,28 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         ctx.globalAlpha = 1;
       }
       if (focus !== null) {
-        const focusEdges = (neighbors.get(focus) || []).map((n) =>
-          edgesByKey.get(edgeKey(focus, n.id))!,
-        );
-        // Scale shared concert counts without letting a frequent tie dominate.
-        // Paint stronger ties last so they remain clear at crossings.
-        for (const edge of focusEdges.sort((a, b) => a.weight - b.weight)) {
-          const other = edge.source === focus ? edge.target : edge.source;
-          const strength = s.connectionStrengths.get(other)!;
-          lines(
-            [edge],
-            `rgba(40, 100, 77, ${0.25 + 0.7 * strength})`,
-            0.7 + 3.3 * strength,
+        if (fading) renderFocusTies(ctx, view);
+        else {
+          refreshLayer(
+            focusLayer,
+            [
+              zoom,
+              projectionVersion,
+              canvas.width,
+              canvas.height,
+              focus,
+              s.connectionStrengths,
+              edgesByKey,
+            ],
+            renderFocusTies,
           );
+          blit(focusLayer);
         }
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      } else if (focusLayer.canvas.width) {
+        // Release the layer's memory until the next selection.
+        focusLayer.canvas.width = focusLayer.canvas.height = 0;
+        focusLayer.inputs = [];
       }
       if (routeEdges.size)
         lines(
@@ -1742,50 +2101,47 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           ctx.setLineDash([]);
         }
       }
-      // Unemphasized, fully faded-in markers share one fill per color.
-      // Tiny ones become squares of equal area, which rasterize faster.
+      // Resting markers come from the cached layer. Hovered and route markers
+      // stay in it and are drawn again, larger, on top.
       plain.fill(0);
-      if (!spatial)
-        for (let color = 0; color < palette.length; color++) {
-          ctx.beginPath();
-          let any = false;
-          const counts = s.counts,
-            grow = Math.sqrt(zoom);
-          for (const i of byColor[color]) {
-            const id = nodes[i].id;
-            if (
-              opacity.get(id) !== 1 ||
-              (emphasized.size && emphasized.has(id)) ||
-              (highlighted.size && highlighted.has(id)) ||
-              id === s.hovered ||
-              (births.size && births.has(id))
-            )
-              continue;
-            plain[i] = 1;
-            const x = projX[i] * zoom + panX,
-              y = projY[i] * zoom + panY;
-            if (x < -20 || y < -20 || x > width + 20 || y > height + 20)
-              continue;
-            // radius() without the 3D scale lookup.
-            const r = Math.max(
-              0.75,
-              Math.min(9, (2 + Math.log2(1 + (counts[id] || 1)) * 0.5) * grow),
-            );
-            if (r < 1.25) {
-              const half = r * 0.886;
-              ctx.rect(x - half, y - half, half * 2, half * 2);
-            } else {
-              ctx.moveTo(x + r, y);
-              ctx.arc(x, y, r, 0, Math.PI * 2);
-            }
-            any = true;
-          }
-          if (!any) continue;
-          ctx.fillStyle = palette[color];
-          ctx.fill();
+      if (!spatial) {
+        for (let i = 0; i < nodes.length; i++) {
+          const id = nodes[i].id;
+          if (
+            opacity.get(id) !== 1 ||
+            (connected.size && connected.has(id)) ||
+            (highlighted.size && highlighted.has(id)) ||
+            (births.size && births.has(id))
+          )
+            continue;
+          plain[i] = 1;
         }
+        if (fading || births.size) renderMarkers(ctx, view);
+        else {
+          refreshLayer(
+            markerLayer,
+            [
+              zoom,
+              projectionVersion,
+              canvas.width,
+              canvas.height,
+              s.counts,
+              connected,
+              highlighted,
+            ],
+            renderMarkers,
+          );
+          blit(markerLayer);
+        }
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      }
       for (const node of drawOrder) {
-        if (plain[nodeIndex.get(node.id)!]) continue;
+        if (
+          plain[nodeIndex.get(node.id)!] &&
+          !emphasized.has(node.id) &&
+          node.id !== s.hovered
+        )
+          continue;
         const alpha = opacity.get(node.id) || 0;
         if (!alpha) continue;
         const projection = projected.get(node.id)!;
@@ -1906,21 +2262,30 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
                 (s.counts[b.id] ?? 0) - (s.counts[a.id] ?? 0) ||
                 a.id - b.id,
             );
-      const orderedIds = new Set([
-        ...(s.hovered === null ? [] : [s.hovered]),
-        ...(s.selected === null ? [] : [s.selected]),
-        ...s.path,
-        ...collaborators.map((n) => n.id),
-        ...(focus === null && s.hovered === null && s.labels
-          ? ranked
-              .filter(
-                (node) =>
-                  (!s.instrument && !groupMembers.size) ||
-                  highlighted.has(node.id),
-              )
-              .map((node) => node.id)
-          : []),
-      ]);
+      // Walked lazily: the label budget runs out long before the ranking does.
+      function* labelOrder() {
+        const seen = new Set<number>();
+        for (const id of [
+          ...(s.hovered === null ? [] : [s.hovered]),
+          ...(s.selected === null ? [] : [s.selected]),
+          ...s.path,
+          ...collaborators.map((n) => n.id),
+        ])
+          if (!seen.has(id)) {
+            seen.add(id);
+            yield id;
+          }
+        if (focus !== null || s.hovered !== null || !s.labels) return;
+        for (const node of ranked)
+          if (
+            ((!s.instrument && !groupMembers.size) ||
+              highlighted.has(node.id)) &&
+            !seen.has(node.id)
+          ) {
+            seen.add(node.id);
+            yield node.id;
+          }
+      }
       const labelLimit =
         focus === null ? (width > 700 ? 20 : 8) : width > 700 ? 12 : 6;
       const visibleLabels: {
@@ -1930,7 +2295,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
         w: number;
         h: number;
       }[] = [];
-      for (const id of orderedIds) {
+      for (const id of labelOrder()) {
         if (visibleLabels.length >= labelLimit) break;
         const n = byId.get(id);
         if (!n) continue;
@@ -2103,6 +2468,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       document.removeEventListener("visibilitychange", invalidateFrame);
       cancelAnimationFrame(frame);
       clearTimeout(regionTimer);
+      clearTimeout(settleTimer);
       observer.disconnect();
       panels.disconnect();
       panelChanges.disconnect();

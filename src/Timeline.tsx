@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
   ArrowUpRight,
@@ -69,7 +69,7 @@ function MonthInput({
   );
 }
 
-export default function Timeline({
+function Timeline({
   bounds,
   range,
   cursor,
@@ -526,3 +526,5 @@ export default function Timeline({
     </section>
   );
 }
+
+export default memo(Timeline);

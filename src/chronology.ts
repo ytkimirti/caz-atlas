@@ -7,11 +7,12 @@ export const monthIndex = (date: string) => {
 };
 export const monthValue = (month: number) =>
   `${Math.floor(month / 12)}-${String((month % 12) + 1).padStart(2, "0")}`;
+const monthFormat = new Intl.DateTimeFormat("tr-TR", {
+  month: "short",
+  year: "numeric",
+});
 export const monthLabel = (month: number) =>
-  new Date(Math.floor(month / 12), month % 12, 1).toLocaleDateString("tr-TR", {
-    month: "short",
-    year: "numeric",
-  });
+  monthFormat.format(new Date(Math.floor(month / 12), month % 12, 1));
 export type DateRange = [number, number];
 
 // Skip the empty lead-in on replay, retaining the selected counting window.
