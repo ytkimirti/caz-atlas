@@ -214,6 +214,14 @@ for (let run = 0; run < runs; run++) {
     for (let i = 0; i < 30; i++) await page.mouse.wheel(0, -40);
     for (let i = 0; i < 30; i++) await page.mouse.wheel(0, 40);
   });
+  // Trackpad pinches send a stream of small wheel steps, one per frame.
+  await scenario("pinch", async () => {
+    await page.mouse.move(center.x - 200, center.y);
+    for (let i = 0; i < 90; i++) {
+      await page.mouse.wheel(0, i < 45 ? -6 : 6);
+      await page.waitForTimeout(8);
+    }
+  });
   await scenario("hover", async () => {
     for (let i = 0; i <= 120; i++)
       await page.mouse.move(300 + i * 7, 250 + ((i * 37) % 450));

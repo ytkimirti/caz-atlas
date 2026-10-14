@@ -299,6 +299,18 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       ),
     );
     const plain = new Uint8Array(nodes.length);
+    let plainKey: unknown[] = [],
+      opacityVersion = 0;
+    let orderSource: GraphData["nodes"] | null = null,
+      orderIndex = new Int32Array(0);
+    // Marker indexes in drawing order, so the overlay pass skips map lookups.
+    function drawOrderIndex(order: GraphData["nodes"]) {
+      if (order !== orderSource) {
+        orderSource = order;
+        orderIndex = Int32Array.from(order, (node) => nodeIndex.get(node.id)!);
+      }
+      return orderIndex;
+    }
     // Bumped whenever projected positions move, so cached layers know.
     let projectionVersion = 0;
     function updateProjection() {
@@ -348,29 +360,47 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     // then composited at their alpha: overlaps still blend once, as in a
     // single path, at a fraction of the rasterization cost.
     const scratch = layer();
-    let segments = new Float64Array(4096),
-      segmentCount = 0,
-      segMinX = Infinity,
-      segMinY = Infinity,
-      segMaxX = -Infinity,
-      segMaxY = -Infinity;
-    function pushSegment(ax: number, ay: number, bx: number, by: number) {
-      if ((segmentCount + 1) * 4 > segments.length) {
-        const grown = new Float64Array(segments.length * 2);
-        grown.set(segments);
-        segments = grown;
+    // Ties waiting to be stroked, with their bounding box.
+    const segmentBuffer = () => ({
+      data: new Float64Array(4096),
+      count: 0,
+      minX: Infinity,
+      minY: Infinity,
+      maxX: -Infinity,
+      maxY: -Infinity,
+    });
+    type Segments = ReturnType<typeof segmentBuffer>;
+    // One buffer per length class, filled in a single pass over the ties.
+    const lengthClasses = [segmentBuffer(), segmentBuffer(), segmentBuffer()];
+    function pushSegment(
+      seg: Segments,
+      ax: number,
+      ay: number,
+      bx: number,
+      by: number,
+    ) {
+      if ((seg.count + 1) * 4 > seg.data.length) {
+        const grown = new Float64Array(seg.data.length * 2);
+        grown.set(seg.data);
+        seg.data = grown;
       }
-      const k = segmentCount++ * 4;
-      segments[k] = ax;
-      segments[k + 1] = ay;
-      segments[k + 2] = bx;
-      segments[k + 3] = by;
-      segMinX = Math.min(segMinX, ax, bx);
-      segMinY = Math.min(segMinY, ay, by);
-      segMaxX = Math.max(segMaxX, ax, bx);
-      segMaxY = Math.max(segMaxY, ay, by);
+      const k = seg.count++ * 4,
+        data = seg.data;
+      data[k] = ax;
+      data[k + 1] = ay;
+      data[k + 2] = bx;
+      data[k + 3] = by;
+      if (ax < seg.minX) seg.minX = ax;
+      if (bx < seg.minX) seg.minX = bx;
+      if (ay < seg.minY) seg.minY = ay;
+      if (by < seg.minY) seg.minY = by;
+      if (ax > seg.maxX) seg.maxX = ax;
+      if (bx > seg.maxX) seg.maxX = bx;
+      if (ay > seg.maxY) seg.maxY = ay;
+      if (by > seg.maxY) seg.maxY = by;
     }
     function flushSegments(
+      seg: Segments,
       dest: CanvasRenderingContext2D,
       color: string,
       lineWidth: number,
@@ -378,24 +408,24 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       clip: Clip,
       union: boolean,
     ) {
-      const count = segmentCount,
+      const { count, data: segments } = seg,
         pad = lineWidth + 2;
-      segmentCount = 0;
+      seg.count = 0;
       const x0 = Math.max(
           0,
-          Math.floor(Math.max(clip.x0, segMinX - pad) * ratio),
+          Math.floor(Math.max(clip.x0, seg.minX - pad) * ratio),
         ),
-        y0 = Math.max(0, Math.floor(Math.max(clip.y0, segMinY - pad) * ratio)),
+        y0 = Math.max(0, Math.floor(Math.max(clip.y0, seg.minY - pad) * ratio)),
         x1 = Math.min(
           canvas.width,
-          Math.ceil(Math.min(clip.x1, segMaxX + pad) * ratio),
+          Math.ceil(Math.min(clip.x1, seg.maxX + pad) * ratio),
         ),
         y1 = Math.min(
           canvas.height,
-          Math.ceil(Math.min(clip.y1, segMaxY + pad) * ratio),
+          Math.ceil(Math.min(clip.y1, seg.maxY + pad) * ratio),
         );
-      segMinX = segMinY = Infinity;
-      segMaxX = segMaxY = -Infinity;
+      seg.minX = seg.minY = Infinity;
+      seg.maxX = seg.maxY = -Infinity;
       if (!count || x1 <= x0 || y1 <= y0 || alpha <= 0) return;
       // Ties no wider than a device pixel rasterize as hairlines, which are
       // cheap and add up where they overlap, so they go straight to the target.
@@ -439,9 +469,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     }
     // Settled ties and resting markers only change with zoom, layout or data.
     // Hover and selection draw on top of the cached pixels; a pan shifts them
-    // and paints just the uncovered strips.
+    // and paints just the uncovered strips. While zooming, the pixels are
+    // stretched instead, and redrawn once motion stops.
     type CachedLayer = ReturnType<typeof layer> & {
       inputs: unknown[];
+      zoom: number;
       panX: number;
       panY: number;
       /** Drawn in the cheaper motion style; redrawn once motion stops. */
@@ -450,6 +482,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     const cachedLayer = (): CachedLayer => ({
       ...layer(),
       inputs: [],
+      zoom: 1,
       panX: 0,
       panY: 0,
       fast: false,
@@ -457,22 +490,91 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     const tieLayer = cachedLayer(),
       focusLayer = cachedLayer(),
       markerLayer = cachedLayer();
-    function refreshLayer(
+    type Render = (
+      dest: CanvasRenderingContext2D,
+      clip: Clip,
+      fast: boolean,
+    ) => void;
+    // Renders device-pixel rects of `dest` (pixels, not CSS units) from scratch.
+    function renderStrips(
+      dest: CanvasRenderingContext2D,
+      strips: [number, number, number, number][],
+      render: Render,
+      fast: boolean,
+      clear: boolean,
+    ) {
+      for (const [x, y, w, h] of strips) {
+        if (w <= 0 || h <= 0) continue;
+        dest.save();
+        dest.setTransform(1, 0, 0, 1, 0, 0);
+        if (clear) dest.clearRect(x, y, w, h);
+        dest.beginPath();
+        dest.rect(x, y, w, h);
+        dest.clip();
+        render(
+          dest,
+          {
+            x0: x / ratio,
+            y0: y / ratio,
+            x1: (x + w) / ratio,
+            y1: (y + h) / ratio,
+          },
+          fast,
+        );
+        dest.restore();
+      }
+    }
+    // Brings a cached layer up to date with the view and draws it on the map.
+    function paintLayer(
       cache: CachedLayer,
       inputs: unknown[],
-      render: (
-        dest: CanvasRenderingContext2D,
-        clip: Clip,
-        fast: boolean,
-      ) => void,
+      render: Render,
       fast = false,
     ) {
       const { canvas: pixels, ctx: dest } = cache;
       const same =
         (fast || !cache.fast) &&
+        pixels.width > 0 &&
+        pixels.height > 0 &&
+        pixels.width === canvas.width &&
+        pixels.height === canvas.height &&
         inputs.length === cache.inputs.length &&
         inputs.every((value, i) => value === cache.inputs[i]);
       cache.inputs = inputs;
+      const scale = zoom / cache.zoom;
+      if (same && fast && scale !== 1 && scale > 0.8 && scale < 1.25) {
+        const x0 = Math.round((panX - cache.panX * scale) * ratio),
+          y0 = Math.round((panY - cache.panY * scale) * ratio),
+          x1 = Math.round(x0 + pixels.width * scale),
+          y1 = Math.round(y0 + pixels.height * scale);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(pixels, x0, y0, x1 - x0, y1 - y0);
+        ctx.restore();
+        // Zooming out uncovers the edges of the map.
+        const w = canvas.width,
+          h = canvas.height,
+          left = Math.max(0, Math.min(w, x0)),
+          right = Math.max(left, Math.min(w, x1)),
+          top = Math.max(0, Math.min(h, y0)),
+          bottom = Math.max(top, Math.min(h, y1));
+        renderStrips(
+          ctx,
+          [
+            [0, 0, left, h],
+            [right, 0, w - right, h],
+            [left, 0, right - left, top],
+            [left, bottom, right - left, h - bottom],
+          ],
+          render,
+          true,
+          false,
+        );
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        cache.fast = true;
+        settleLater();
+        return;
+      }
       const dx = (panX - cache.panX) * ratio,
         dy = (panY - cache.panY) * ratio;
       const sx = Math.round(dx),
@@ -480,67 +582,57 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       dest.setTransform(1, 0, 0, 1, 0, 0);
       if (
         same &&
+        scale === 1 &&
         Math.abs(dx - sx) < 1e-3 &&
         Math.abs(dy - sy) < 1e-3 &&
         Math.abs(sx) < pixels.width &&
         Math.abs(sy) < pixels.height
       ) {
-        if (!sx && !sy) return;
-        dest.globalCompositeOperation = "copy";
-        dest.drawImage(pixels, sx, sy);
-        dest.globalCompositeOperation = "source-over";
-        cache.panX += sx / ratio;
-        cache.panY += sy / ratio;
-        const strips: [number, number, number, number][] = [];
-        if (sx)
-          strips.push([
-            sx > 0 ? 0 : pixels.width + sx,
-            0,
-            Math.abs(sx),
-            pixels.height,
-          ]);
-        if (sy)
-          strips.push([
-            0,
-            sy > 0 ? 0 : pixels.height + sy,
-            pixels.width,
-            Math.abs(sy),
-          ]);
-        for (const [x, y, w, h] of strips) {
-          dest.clearRect(x, y, w, h);
-          dest.save();
-          dest.beginPath();
-          dest.rect(x, y, w, h);
-          dest.clip();
-          render(
+        if (sx || sy) {
+          dest.globalCompositeOperation = "copy";
+          dest.drawImage(pixels, sx, sy);
+          dest.globalCompositeOperation = "source-over";
+          cache.panX += sx / ratio;
+          cache.panY += sy / ratio;
+          renderStrips(
             dest,
-            {
-              x0: x / ratio,
-              y0: y / ratio,
-              x1: (x + w) / ratio,
-              y1: (y + h) / ratio,
-            },
+            [
+              [sx > 0 ? 0 : pixels.width + sx, 0, Math.abs(sx), pixels.height],
+              [0, sy > 0 ? 0 : pixels.height + sy, pixels.width, Math.abs(sy)],
+            ],
+            render,
             cache.fast,
+            true,
           );
-          dest.restore();
         }
-        return;
+      } else {
+        if (pixels.width !== canvas.width || pixels.height !== canvas.height) {
+          pixels.width = canvas.width;
+          pixels.height = canvas.height;
+        } else dest.clearRect(0, 0, pixels.width, pixels.height);
+        cache.zoom = zoom;
+        cache.panX = panX;
+        cache.panY = panY;
+        cache.fast = fast;
+        render(dest, { x0: 0, y0: 0, x1: width, y1: height }, fast);
       }
-      if (pixels.width !== canvas.width || pixels.height !== canvas.height) {
-        pixels.width = canvas.width;
-        pixels.height = canvas.height;
-      } else dest.clearRect(0, 0, pixels.width, pixels.height);
-      cache.panX = panX;
-      cache.panY = panY;
-      cache.fast = fast;
-      render(dest, { x0: 0, y0: 0, x1: width, y1: height }, fast);
-    }
-    function blit(cache: CachedLayer) {
-      if (!cache.canvas.width || !cache.canvas.height) return;
+      if (cache.fast) settleLater();
+      if (!pixels.width || !pixels.height) return;
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(cache.canvas, 0, 0);
+      ctx.drawImage(pixels, 0, 0);
       ctx.restore();
+    }
+    // Redraws in the settled style shortly after motion stops.
+    function settleLater() {
+      if (settleTimer) return;
+      settleTimer = window.setTimeout(
+        () => {
+          settleTimer = 0;
+          invalidateFrame();
+        },
+        Math.max(0, motionUntil - performance.now()) + 20,
+      );
     }
     // A stroke reaches `pad` past its endpoints' box; strips rendered after a
     // pan must still draw the part of a tie that crosses their seam.
@@ -573,27 +665,32 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           to = offsets[tier + 1];
         if (from === to) continue;
         const style = edgeStyle(tier, zoom);
-        for (let pass = 0; pass < 3; pass++) {
-          for (let k = from; k < to; k++) {
-            const i = a[k],
-              j = b[k];
-            if (i < 0 || j < 0) continue;
-            const ax = projX[i] * zoom + panX,
-              ay = projY[i] * zoom + panY,
-              bx = projX[j] * zoom + panX,
-              by = projY[j] * zoom + panY;
-            if (outside(ax, ay, bx, by, clip, 2)) continue;
-            // Sub-pixel ties are hidden under their markers anyway.
-            const dx = bx - ax,
-              dy = by - ay;
-            const length = dx * dx + dy * dy;
-            if (length < 1) continue;
-            if ((length > long ? (length > spanning ? 2 : 1) : 0) !== pass)
-              continue;
-            pushSegment(ax, ay, bx, by);
-          }
-          const thick = style.width * ratio > 1;
+        for (let k = from; k < to; k++) {
+          const i = a[k],
+            j = b[k];
+          if (i < 0 || j < 0) continue;
+          const ax = projX[i] * zoom + panX,
+            ay = projY[i] * zoom + panY,
+            bx = projX[j] * zoom + panX,
+            by = projY[j] * zoom + panY;
+          if (outside(ax, ay, bx, by, clip, 2)) continue;
+          // Sub-pixel ties are hidden under their markers anyway.
+          const dx = bx - ax,
+            dy = by - ay;
+          const length = dx * dx + dy * dy;
+          if (length < 1) continue;
+          pushSegment(
+            lengthClasses[length > long ? (length > spanning ? 2 : 1) : 0],
+            ax,
+            ay,
+            bx,
+            by,
+          );
+        }
+        const thick = style.width * ratio > 1;
+        for (let pass = 0; pass < 3; pass++)
           flushSegments(
+            lengthClasses[pass],
             dest,
             style.color,
             fast && thick ? 1 / ratio : style.width,
@@ -606,7 +703,6 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             clip,
             thick,
           );
-        }
       }
     }
     // The selected musician's ties. Scale shared concert counts without letting
@@ -1118,6 +1214,40 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
     // Named shapes on the map, found from settled positions. Recomputed after
     // the layout, the visible graph or the ensemble list changes.
     let regions: (Region & { label: string; index: Int32Array })[] = [];
+    // Each region's visible center and extent in projected units. Zoom and pan
+    // only scale and shift them, so they are rebuilt when the layout changes.
+    let regionShapes: {
+      cx: number;
+      cy: number;
+      extent: number;
+      count: number;
+    }[] = [];
+    let regionShapesKey: unknown[] = [];
+    function regionGeometry(visible: Set<number>) {
+      const key = [regions, visible, projectionVersion];
+      if (key.every((value, i) => value === regionShapesKey[i]))
+        return regionShapes;
+      regionShapesKey = key;
+      regionShapes = regions.map((region) => {
+        let sx = 0,
+          sy = 0,
+          count = 0;
+        for (const i of region.index) {
+          if (!visible.has(nodes[i].id)) continue;
+          sx += projX[i];
+          sy += projY[i];
+          count++;
+        }
+        const cx = count ? sx / count : 0,
+          cy = count ? sy / count : 0;
+        let extent = 0;
+        for (const i of region.index)
+          if (visible.has(nodes[i].id))
+            extent = Math.max(extent, Math.hypot(projX[i] - cx, projY[i] - cy));
+        return { cx, cy, extent, count };
+      });
+      return regionShapes;
+    }
     let regionSource: {
       data: GraphData;
       ensembles: Ensemble[];
@@ -1718,6 +1848,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               ? Math.min(target, current + delta)
               : Math.max(target, current - delta);
           opacity.set(node.id, next);
+          opacityVersion++;
           if (next !== target) animating = true;
         }
         for (const [key, item] of animatedEdges) {
@@ -1772,21 +1903,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           !motion.matches &&
           Math.hypot(yawVelocity, pitchVelocity) > 0.00002);
       if (!fading) {
-        refreshLayer(
-          tieLayer,
-          [zoom, projectionVersion, canvas.width, canvas.height, s.edges],
-          renderTies,
-          moving,
-        );
-        blit(tieLayer);
-        if (tieLayer.fast && !settleTimer)
-          settleTimer = window.setTimeout(
-            () => {
-              settleTimer = 0;
-              invalidateFrame();
-            },
-            Math.max(0, motionUntil - now) + 20,
-          );
+        paintLayer(tieLayer, [projectionVersion, s.edges], renderTies, moving);
       } else {
         // Fading ties batch by tier and a quantized opacity.
         const batches = new Map<number, Edge[]>();
@@ -1808,9 +1925,11 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
               ay = a.y * zoom + panY,
               bx = b.x * zoom + panX,
               by = b.y * zoom + panY;
-            if (!outside(ax, ay, bx, by, view)) pushSegment(ax, ay, bx, by);
+            if (!outside(ax, ay, bx, by, view))
+              pushSegment(lengthClasses[0], ax, ay, bx, by);
           }
           flushSegments(
+            lengthClasses[0],
             ctx,
             style.color,
             style.width,
@@ -1841,20 +1960,12 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       if (focus !== null) {
         if (fading) renderFocusTies(ctx, view);
         else {
-          refreshLayer(
+          paintLayer(
             focusLayer,
-            [
-              zoom,
-              projectionVersion,
-              canvas.width,
-              canvas.height,
-              focus,
-              s.connectionStrengths,
-              edgesByKey,
-            ],
+            [projectionVersion, focus, s.connectionStrengths, edgesByKey],
             renderFocusTies,
+            moving,
           );
-          blit(focusLayer);
         }
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       } else if (focusLayer.canvas.width) {
@@ -1902,19 +2013,13 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
           y: number;
           r: number;
         }[] = [];
-        for (const region of regions) {
-          let sx = 0,
-            sy = 0,
-            count = 0;
-          for (const i of region.index) {
-            if (!visible.has(nodes[i].id)) continue;
-            sx += projX[i];
-            sy += projY[i];
-            count++;
-          }
+        const shapes = regionGeometry(visible);
+        for (let k = 0; k < regions.length; k++) {
+          const region = regions[k],
+            { cx, cy, extent, count } = shapes[k];
           if (count < 3) continue;
-          const x = (sx / count) * zoom + panX,
-            y = (sy / count) * zoom + panY;
+          const x = cx * zoom + panX,
+            y = cy * zoom + panY;
           if (
             x < viewport.left ||
             x > viewport.right ||
@@ -1922,16 +2027,7 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             y > viewport.bottom
           )
             continue;
-          let r = 0;
-          for (const i of region.index)
-            if (visible.has(nodes[i].id))
-              r = Math.max(
-                r,
-                Math.hypot(
-                  projX[i] * zoom + panX - x,
-                  projY[i] * zoom + panY - y,
-                ),
-              );
+          const r = extent * zoom;
           if (r < REGION_MIN_RADIUS) continue;
           if (
             spatial &&
@@ -2103,8 +2199,16 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
       }
       // Resting markers come from the cached layer. Hovered and route markers
       // stay in it and are drawn again, larger, on top.
-      plain.fill(0);
-      if (!spatial) {
+      if (
+        !spatial &&
+        (births.size ||
+          ![opacityVersion, connected, highlighted].every(
+            (value, i) => value === plainKey[i],
+          ))
+      ) {
+        // Births come and go each frame, so they never reuse the result.
+        plainKey = births.size ? [] : [opacityVersion, connected, highlighted];
+        plain.fill(0);
         for (let i = 0; i < nodes.length; i++) {
           const id = nodes[i].id;
           if (
@@ -2116,30 +2220,26 @@ const Network = forwardRef<NetworkHandle, Props>(function Network(props, ref) {
             continue;
           plain[i] = 1;
         }
+      }
+      if (!spatial) {
         if (fading || births.size) renderMarkers(ctx, view);
         else {
-          refreshLayer(
+          paintLayer(
             markerLayer,
-            [
-              zoom,
-              projectionVersion,
-              canvas.width,
-              canvas.height,
-              s.counts,
-              connected,
-              highlighted,
-            ],
+            [projectionVersion, s.counts, connected, highlighted],
             renderMarkers,
+            moving,
           );
-          blit(markerLayer);
         }
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       }
-      for (const node of drawOrder) {
+      const order = spatial ? null : drawOrderIndex(drawOrder);
+      for (let k = 0; k < drawOrder.length; k++) {
+        const node = drawOrder[k];
         if (
-          plain[nodeIndex.get(node.id)!] &&
-          !emphasized.has(node.id) &&
-          node.id !== s.hovered
+          plain[order ? order[k] : nodeIndex.get(node.id)!] &&
+          node.id !== s.hovered &&
+          !(emphasized.size && emphasized.has(node.id))
         )
           continue;
         const alpha = opacity.get(node.id) || 0;
